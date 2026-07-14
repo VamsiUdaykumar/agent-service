@@ -1,0 +1,31 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_PATH: /data/agent_service.db
+      SIM_SPEED: ${SIM_SPEED:-1.0}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-agent-service}
+      OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-0.1.0}
+      IDEMPOTENCY_KEY_TTL_HOURS: ${IDEMPOTENCY_KEY_TTL_HOURS:-24}
+    volumes:
+      - db-data:/data
+    depends_on:
+      - collector
+
+  collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    environment:
+      GRAFANA_CLOUD_OTLP_ENDPOINT: ${GRAFANA_CLOUD_OTLP_ENDPOINT:-http://localhost:4319}
+      GRAFANA_CLOUD_OTLP_AUTH_HEADER: ${GRAFANA_CLOUD_OTLP_AUTH_HEADER:-cGxhY2Vob2xkZXI6cGxhY2Vob2xkZXI=}
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
+volumes:
+  db-data:

@@ -1,0 +1,42 @@
+# OTel Collector pipeline: OTLP in, fan out to two exporters.
+#
+# `debug` is always on — traces/metrics are visible in `docker compose logs
+# collector` with zero external accounts, satisfying "the system runs fully
+# without any account" (PRD §4).
+#
+# `otlphttp/grafana_cloud` targets Grafana Cloud. Its endpoint/auth come from
+# env vars (see .env.example) that default to harmless placeholders when
+# unset — the exporter then just logs connection/auth failures on its own
+# export cycle instead of preventing the collector from starting, so the
+# rest of the pipeline (debug exporter) is unaffected.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  debug:
+    verbosity: detailed
+
+  otlphttp/grafana_cloud:
+    endpoint: ${env:GRAFANA_CLOUD_OTLP_ENDPOINT}
+    headers:
+      authorization: "Basic ${env:GRAFANA_CLOUD_OTLP_AUTH_HEADER}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlphttp/grafana_cloud]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlphttp/grafana_cloud]
