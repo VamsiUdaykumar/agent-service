@@ -61,6 +61,9 @@ INSTANCES = [
         attempt=1,
         error=ERROR,
         duration_ms=100,
+        tokens_in=80,
+        tokens_out=0,
+        cost_usd=0.002,
     ),
     StepRetried(
         run_id="r1",

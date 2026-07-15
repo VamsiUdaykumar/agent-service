@@ -64,6 +64,11 @@ class StepFailed(BaseEvent):
     attempt: Annotated[int, Field(ge=1)]
     error: RunError
     duration_ms: int
+    # Failed attempts still consume tokens (PRD §3.2 — failure costs money,
+    # and that must be visible in accounting/analytics).
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    cost_usd: float | None = None
 
 
 class StepRetried(BaseEvent):
