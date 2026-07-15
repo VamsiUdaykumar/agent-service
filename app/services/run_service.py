@@ -19,6 +19,11 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace as otel_trace
+from opentelemetry.metrics import Meter
+from opentelemetry.trace import Tracer
+
 from app.domain.errors import RunError, RunErrorCode
 from app.domain.events import Event, RunCancelled, RunCancelling, RunCompleted, RunFailed
 from app.domain.profiles import PROFILES, AgentProfile
@@ -31,6 +36,8 @@ from app.runner.execute import CancelSignal, execute_run
 from app.services.errors import UnknownAgentError
 from app.services.event_bus import RunEventBus
 from app.telemetry.ids import generate_trace_id
+from app.telemetry.metrics import Metrics
+from app.telemetry.run_tracer import RunTracer
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +67,23 @@ def _is_terminal_event(event: Event) -> bool:
 
 class RunService:
     def __init__(
-        self, repository: Repository, sim_speed: float, idempotency_key_ttl_hours: int = 24
+        self,
+        repository: Repository,
+        sim_speed: float,
+        idempotency_key_ttl_hours: int = 24,
+        *,
+        tracer: Tracer | None = None,
+        meter: Meter | None = None,
     ) -> None:
         self._repository = repository
         self._sim_speed = sim_speed
         self._idempotency_key_ttl = timedelta(hours=idempotency_key_ttl_hours)
         self._event_bus = RunEventBus()
+        # Defaults to the global no-op tracer/meter when no real
+        # TracerProvider/MeterProvider was configured (e.g. most tests) —
+        # instrumentation calls are then harmless no-ops, not errors.
+        self._tracer = tracer or otel_trace.get_tracer("agent_service.runner")
+        self._metrics = Metrics(meter or otel_metrics.get_meter("agent_service.runner"))
         # In-process registry: lets the cancel endpoint signal the running
         # task promptly. Never the source of truth for cancellation state —
         # that's the persisted `cancelling` status (amendment 1).
@@ -127,7 +145,7 @@ class RunService:
         )
 
         if outcome == "created":
-            self._spawn_execution(record.id, agent_id, profile, record.seed, input)
+            self._spawn_execution(record.id, agent_id, profile, record.seed, input, record.trace_id)
         return record
 
     async def _create_run(
@@ -154,16 +172,22 @@ class RunService:
             created_at=datetime.now(UTC),
         )
 
-        self._spawn_execution(run_id, agent_id, profile, resolved_seed, input)
+        self._spawn_execution(run_id, agent_id, profile, resolved_seed, input, trace_id)
         return record
 
     def _spawn_execution(
-        self, run_id: str, agent_id: str, profile: AgentProfile, seed: int, input: dict[str, Any]
+        self,
+        run_id: str,
+        agent_id: str,
+        profile: AgentProfile,
+        seed: int,
+        input: dict[str, Any],
+        trace_id: str,
     ) -> None:
         cancel_signal = CancelSignal()
         self._cancel_signals[run_id] = cancel_signal
         task = asyncio.create_task(
-            self._execute(run_id, agent_id, profile, seed, input, cancel_signal)
+            self._execute(run_id, agent_id, profile, seed, input, trace_id, cancel_signal)
         )
         self._tasks[run_id] = task
 
@@ -174,8 +198,12 @@ class RunService:
         profile: AgentProfile,
         seed: int,
         input: dict[str, Any],
+        trace_id: str,
         cancel_signal: CancelSignal,
     ) -> None:
+        run_tracer = RunTracer(
+            self._tracer, self._metrics, run_id=run_id, agent_id=agent_id, trace_id=trace_id
+        )
         try:
             async for event in execute_run(
                 run_id=run_id,
@@ -188,6 +216,7 @@ class RunService:
             ):
                 persisted = await self._repository.append_event(event)
                 self._event_bus.publish(run_id, persisted)
+                run_tracer.on_event(persisted)
         except Exception:
             logger.exception("unexpected error while executing run %s", run_id)
         finally:
@@ -197,13 +226,13 @@ class RunService:
             # (amendment 1; M5.T6.2). Best-effort: e.g. the repository may
             # already be closed if the process is shutting down.
             try:
-                await self._ensure_terminal(run_id)
+                await self._ensure_terminal(run_id, run_tracer)
             except Exception:
                 logger.exception("failed to ensure a terminal event for run %s", run_id)
             self._tasks.pop(run_id, None)
             self._cancel_signals.pop(run_id, None)
 
-    async def _ensure_terminal(self, run_id: str) -> None:
+    async def _ensure_terminal(self, run_id: str, run_tracer: RunTracer) -> None:
         record = await self._repository.get_run(run_id)
         if record is None or is_terminal(record.status):
             return
@@ -240,6 +269,7 @@ class RunService:
         except (TerminalRunConflictError, IllegalTransitionError):
             return  # lost a race with a legitimate terminal write; nothing to do
         self._event_bus.publish(run_id, persisted)
+        run_tracer.on_event(persisted)
 
     async def cancel_run(self, run_id: str) -> RunRecord:
         """Persist the `cancelling` transition (durable, via `append_event`)

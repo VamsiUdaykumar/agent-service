@@ -16,6 +16,12 @@ FROM python:3.12-slim AS runtime
 RUN useradd --create-home --uid 1000 appuser
 WORKDIR /app
 
+# Pre-create /data owned by appuser: Docker initializes a fresh named
+# volume's contents from whatever already exists at the mount point in the
+# image, so this is what makes the SQLite file writable by the non-root
+# user the container actually runs as (compose mounts db-data here).
+RUN mkdir -p /data && chown appuser:appuser /data
+
 COPY --from=build /venv /venv
 COPY app ./app
 

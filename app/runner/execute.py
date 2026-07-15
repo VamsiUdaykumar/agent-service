@@ -174,7 +174,7 @@ async def _execute_step(
 
         duration_ms = sample_latency_ms(step.step_type, rng)
         await asyncio.sleep((duration_ms / 1000) / sim_speed)
-        tokens_in, tokens_out, cost = sample_tokens_and_cost(step.step_type, rng)
+        tokens_in, tokens_out, cost, model_name = sample_tokens_and_cost(step.step_type, rng)
 
         # Two independent draws every attempt, in a fixed order, regardless
         # of outcome — that's what makes replay with the same seed exact.
@@ -204,6 +204,7 @@ async def _execute_step(
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cost_usd=cost,
+                model_name=model_name,
             )
             raise _RunAborted(error)
 
@@ -223,6 +224,7 @@ async def _execute_step(
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cost_usd=cost,
+                model_name=model_name,
             )
             delay_ms = backoff_delay_ms(attempt)
             yield StepRetried(
@@ -273,5 +275,6 @@ async def _execute_step(
                 tokens_out=tokens_out,
                 cost_usd=cost,
                 duration_ms=duration_ms,
+                model_name=model_name,
             )
         return

@@ -10,8 +10,19 @@ from app.persistence.errors import RunNotFoundError, TerminalRunConflictError
 from app.persistence.sqlite_repository import SqliteRepository
 from app.runner.execute import CancelSignal
 from app.services.run_service import RunService
+from app.telemetry.run_tracer import RunTracer
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _tracer_for(service: RunService, run_id: str) -> RunTracer:
+    return RunTracer(
+        service._tracer,  # type: ignore[attr-defined]
+        service._metrics,  # type: ignore[attr-defined]
+        run_id=run_id,
+        agent_id="agent-simple",
+        trace_id="a" * 32,
+    )
 
 
 async def _create(repo: SqliteRepository, run_id: str = "run-1") -> None:
@@ -152,7 +163,7 @@ async def test_ensure_terminal_appends_run_cancelled_when_status_is_cancelling(
     await repo.append_event(RunCancelling(run_id="run-1", sequence=1, occurred_at=NOW))
 
     service = RunService(repo, sim_speed=1000.0)
-    await service._ensure_terminal("run-1")  # type: ignore[attr-defined]
+    await service._ensure_terminal("run-1", _tracer_for(service, "run-1"))  # type: ignore[attr-defined]
 
     record = await repo.get_run("run-1")
     assert record is not None
@@ -166,7 +177,7 @@ async def test_ensure_terminal_appends_run_failed_when_stopped_unexpectedly(
     await repo.append_event(RunStarted(run_id="run-1", sequence=1, occurred_at=NOW))
 
     service = RunService(repo, sim_speed=1000.0)
-    await service._ensure_terminal("run-1")  # type: ignore[attr-defined]
+    await service._ensure_terminal("run-1", _tracer_for(service, "run-1"))  # type: ignore[attr-defined]
 
     record = await repo.get_run("run-1")
     assert record is not None
@@ -187,7 +198,7 @@ async def test_ensure_terminal_is_a_no_op_when_already_terminal(repo: SqliteRepo
     )
 
     service = RunService(repo, sim_speed=1000.0)
-    await service._ensure_terminal("run-1")  # type: ignore[attr-defined]
+    await service._ensure_terminal("run-1", _tracer_for(service, "run-1"))  # type: ignore[attr-defined]
 
     record = await repo.get_run("run-1")
     assert record is not None

@@ -4,6 +4,8 @@ from pathlib import Path
 
 import httpx
 import pytest
+from opentelemetry.metrics import NoOpMeter
+from opentelemetry.trace import NoOpTracer
 
 from app.config import Settings
 from app.domain.events import RunStarted
@@ -47,7 +49,7 @@ async def test_startup_recovery_flips_orphaned_pending_run_to_failed(db_path: Pa
     await _seed_orphaned_run(db_path, "orphan-pending", status="pending")
 
     settings = Settings(database_path=str(db_path), sim_speed=50_000.0)
-    app = create_app(settings)
+    app = create_app(settings, tracer=NoOpTracer(), meter=NoOpMeter("test"))
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -62,7 +64,7 @@ async def test_startup_recovery_flips_orphaned_running_run_to_failed(db_path: Pa
     await _seed_orphaned_run(db_path, "orphan-running", status="running")
 
     settings = Settings(database_path=str(db_path), sim_speed=50_000.0)
-    app = create_app(settings)
+    app = create_app(settings, tracer=NoOpTracer(), meter=NoOpMeter("test"))
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -74,7 +76,7 @@ async def test_startup_recovery_flips_orphaned_running_run_to_failed(db_path: Pa
 
 async def test_startup_recovery_does_not_touch_healthy_terminal_runs(db_path: Path) -> None:
     settings = Settings(database_path=str(db_path), sim_speed=50_000.0)
-    app = create_app(settings)
+    app = create_app(settings, tracer=NoOpTracer(), meter=NoOpMeter("test"))
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -85,7 +87,7 @@ async def test_startup_recovery_does_not_touch_healthy_terminal_runs(db_path: Pa
             await _poll_until_terminal(client, run_id)
 
     # Reopen the app against the same DB — a normal restart, nothing orphaned.
-    app2 = create_app(settings)
+    app2 = create_app(settings, tracer=NoOpTracer(), meter=NoOpMeter("test"))
     async with app2.router.lifespan_context(app2):
         transport2 = httpx.ASGITransport(app=app2)
         async with httpx.AsyncClient(transport=transport2, base_url="http://test") as client2:

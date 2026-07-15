@@ -13,6 +13,8 @@ from pathlib import Path
 
 import httpx
 import pytest
+from opentelemetry.metrics import NoOpMeter
+from opentelemetry.trace import NoOpTracer
 from starlette import status
 
 from app.config import Settings
@@ -21,7 +23,7 @@ from app.main import create_app
 
 async def _make_client(tmp_path: Path, name: str, sim_speed: float) -> httpx.AsyncClient:
     settings = Settings(database_path=str(tmp_path / name), sim_speed=sim_speed)
-    app = create_app(settings)
+    app = create_app(settings, tracer=NoOpTracer(), meter=NoOpMeter("test"))
     ctx = app.router.lifespan_context(app)
     await ctx.__aenter__()
     transport = httpx.ASGITransport(app=app)

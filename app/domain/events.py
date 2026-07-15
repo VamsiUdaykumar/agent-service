@@ -64,6 +64,9 @@ class StepCompleted(BaseEvent):
     tokens_out: int | None = None
     cost_usd: float | None = None
     duration_ms: int
+    # Set only for model_call steps — the GenAI semantic-convention
+    # `gen_ai.request.model` attribute on the step span comes from here.
+    model_name: str | None = None
 
 
 class StepFailed(BaseEvent):
@@ -77,6 +80,7 @@ class StepFailed(BaseEvent):
     tokens_in: int | None = None
     tokens_out: int | None = None
     cost_usd: float | None = None
+    model_name: str | None = None
 
 
 class StepRetried(BaseEvent):

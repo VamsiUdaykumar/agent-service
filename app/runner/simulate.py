@@ -35,15 +35,15 @@ def sample_model_name(rng: random.Random) -> str:
 
 def sample_tokens_and_cost(
     step_type: StepType, rng: random.Random
-) -> tuple[int | None, int | None, float | None]:
+) -> tuple[int | None, int | None, float | None, str | None]:
     ranges = _TOKEN_RANGES.get(step_type)
     if ranges is None:
-        return None, None, None
+        return None, None, None, None
     (in_lo, in_hi), (out_lo, out_hi) = ranges
     tokens_in = rng.randint(in_lo, in_hi)
     tokens_out = rng.randint(out_lo, out_hi)
     model_name = sample_model_name(rng)
-    return tokens_in, tokens_out, cost_usd(model_name, tokens_in, tokens_out)
+    return tokens_in, tokens_out, cost_usd(model_name, tokens_in, tokens_out), model_name
 
 
 def sample_latency_ms(step_type: StepType, rng: random.Random) -> int:
