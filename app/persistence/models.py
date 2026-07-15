@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from app.domain.errors import RunError
 from app.domain.status import RunStatus, StepStatus, StepType
@@ -21,7 +22,7 @@ class RunRecord:
     status: RunStatus
     agent_id: str
     seed: int
-    input: str
+    input: dict[str, Any]
     metadata: dict[str, str] | None
     tokens_in: int
     tokens_out: int

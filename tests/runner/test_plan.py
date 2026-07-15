@@ -11,18 +11,18 @@ def _flatten(plan):
 
 
 def test_step_count_within_profile_range() -> None:
-    profile = PROFILES["researcher"]
+    profile = PROFILES["agent-researcher"]
     for seed in range(50):
-        rng = make_rng("researcher", seed, "x")
+        rng = make_rng("agent-researcher", seed, {"prompt": "x"})
         plan = generate_step_plan(profile, rng)
         assert profile.step_count.min_steps <= len(plan) <= profile.step_count.max_steps
 
 
 def test_step_types_drawn_only_from_profile_weights() -> None:
-    profile = PROFILES["researcher"]
+    profile = PROFILES["agent-researcher"]
     allowed = {t for t, w in profile.step_type_weights.items() if w > 0}
     for seed in range(50):
-        rng = make_rng("researcher", seed, "x")
+        rng = make_rng("agent-researcher", seed, {"prompt": "x"})
         plan = generate_step_plan(profile, rng)
         for step in plan:
             assert step.step_type in allowed
@@ -33,10 +33,10 @@ def test_step_types_drawn_only_from_profile_weights() -> None:
 
 
 def test_sub_agent_nests_exactly_one_level_deep() -> None:
-    profile = PROFILES["researcher"]
+    profile = PROFILES["agent-researcher"]
     found_sub_agent = False
     for seed in range(200):
-        rng = make_rng("researcher", seed, "x")
+        rng = make_rng("agent-researcher", seed, {"prompt": "x"})
         plan = generate_step_plan(profile, rng)
         for step in plan:
             if step.step_type is StepType.SUB_AGENT:
@@ -49,15 +49,15 @@ def test_sub_agent_nests_exactly_one_level_deep() -> None:
 
 
 def test_step_ids_are_unique_within_a_plan() -> None:
-    profile = PROFILES["researcher"]
-    rng = make_rng("researcher", 1, "x")
+    profile = PROFILES["agent-researcher"]
+    rng = make_rng("agent-researcher", 1, {"prompt": "x"})
     plan = generate_step_plan(profile, rng)
     ids = [step.step_id for step in _flatten(plan)]
     assert len(ids) == len(set(ids))
 
 
 def test_generate_step_plan_is_a_pure_function_of_the_rng_state() -> None:
-    profile = PROFILES["flaky"]
-    plan_a = generate_step_plan(profile, make_rng("flaky", 99, "task"))
-    plan_b = generate_step_plan(profile, make_rng("flaky", 99, "task"))
+    profile = PROFILES["agent-flaky"]
+    plan_a = generate_step_plan(profile, make_rng("agent-flaky", 99, {"prompt": "task"}))
+    plan_b = generate_step_plan(profile, make_rng("agent-flaky", 99, {"prompt": "task"}))
     assert plan_a == plan_b

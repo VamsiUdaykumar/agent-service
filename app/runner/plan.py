@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from app.domain.profiles import AgentProfile
 from app.domain.status import StepType
 
-# Sub-agent steps nest exactly one level deep (PRD §3.4). The PRD doesn't
-# pin a child-count range, so this is a runner-level constant, not part of
-# the profile — kept small so a sub-agent step doesn't dwarf the run.
-_SUB_AGENT_CHILD_COUNT_RANGE = (2, 4)
+# Sub-agent steps nest exactly one level deep (PRD §3.4), with 2-3 children —
+# matching the "agent-simple" profile's 2-3 step count for consistency
+# across the spec's small-count conventions.
+_SUB_AGENT_CHILD_COUNT_RANGE = (2, 3)
 
 
 @dataclass(frozen=True, slots=True)

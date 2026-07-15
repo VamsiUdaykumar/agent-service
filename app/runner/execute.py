@@ -14,6 +14,7 @@ import asyncio
 import random
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from typing import Any
 
 from app.domain.errors import RunError, RunErrorCode
 from app.domain.events import (
@@ -30,11 +31,11 @@ from app.domain.profiles import AgentProfile
 from app.domain.status import StepType
 from app.runner.plan import PlannedStep, generate_step_plan
 from app.runner.rng import make_rng
-from app.runner.simulate import sample_backoff_delay_ms, sample_latency_ms, sample_tokens_and_cost
+from app.runner.simulate import backoff_delay_ms, sample_latency_ms, sample_tokens_and_cost
 
-# A retryable failure that's still failing at this attempt is escalated to a
-# terminal, non-retryable one — otherwise an unlucky RNG draw could retry
-# forever. Not specified numerically by the PRD; kept small and fixed.
+# 1 initial attempt + 2 retries. A retryable failure still failing at the
+# 3rd attempt is escalated to a terminal, non-retryable one — otherwise an
+# unlucky RNG draw could retry forever.
 MAX_ATTEMPTS = 3
 
 _PLACEHOLDER_SEQUENCE = 1
@@ -102,7 +103,7 @@ async def execute_run(
     agent_id: str,
     profile: AgentProfile,
     seed: int,
-    input: str,
+    input: dict[str, Any],
     sim_speed: float,
     cancel_signal: CancelSignal | None = None,
 ) -> AsyncIterator[Event]:
@@ -223,7 +224,7 @@ async def _execute_step(
                 tokens_out=tokens_out,
                 cost_usd=cost,
             )
-            delay_ms = sample_backoff_delay_ms(rng)
+            delay_ms = backoff_delay_ms(attempt)
             yield StepRetried(
                 run_id=run_id,
                 sequence=_PLACEHOLDER_SEQUENCE,

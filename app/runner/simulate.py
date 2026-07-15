@@ -22,7 +22,11 @@ _LATENCY_MS_RANGES: dict[StepType, tuple[int, int]] = {
 }
 
 _MODEL_WEIGHTS = (0.7, 0.3)  # mostly the cheap model, sometimes the pro model
-_BACKOFF_MS_RANGE = (100, 2000)
+
+# Fixed exponential backoff schedule: 0.5s before the 1st retry, 1s before
+# the 2nd. Not RNG-sampled — a deterministic function of the failed attempt
+# number, so it doesn't consume RNG state at all.
+_BACKOFF_SCHEDULE_MS: tuple[int, ...] = (500, 1000)
 
 
 def sample_model_name(rng: random.Random) -> str:
@@ -47,5 +51,7 @@ def sample_latency_ms(step_type: StepType, rng: random.Random) -> int:
     return rng.randint(lo, hi)
 
 
-def sample_backoff_delay_ms(rng: random.Random) -> int:
-    return rng.randint(*_BACKOFF_MS_RANGE)
+def backoff_delay_ms(attempt: int) -> int:
+    """Delay before retrying after `attempt` (1-indexed) has failed."""
+    index = min(attempt - 1, len(_BACKOFF_SCHEDULE_MS) - 1)
+    return _BACKOFF_SCHEDULE_MS[index]

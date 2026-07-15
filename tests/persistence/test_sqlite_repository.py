@@ -27,9 +27,9 @@ NOW = datetime(2026, 1, 1, tzinfo=UTC)
 async def _create(repo: SqliteRepository, run_id: str = "run-1", **overrides: object) -> None:
     defaults: dict[str, object] = dict(
         run_id=run_id,
-        agent_id="researcher",
+        agent_id="agent-researcher",
         seed=1,
-        input="do the thing",
+        input={"prompt": "do the thing"},
         metadata={"team": "growth"},
         trace_id="a" * 32,
         created_at=NOW,
@@ -358,11 +358,13 @@ async def test_list_runs_concurrent_inserts_produce_stable_pages(repo: SqliteRep
 
 
 async def test_list_runs_filters_by_status_agent_id_and_metadata(repo: SqliteRepository) -> None:
-    await _create(repo, run_id="r-researcher", agent_id="researcher", metadata={"team": "growth"})
-    await _create(repo, run_id="r-simple", agent_id="simple", metadata={"team": "core"})
+    await _create(
+        repo, run_id="r-researcher", agent_id="agent-researcher", metadata={"team": "growth"}
+    )
+    await _create(repo, run_id="r-simple", agent_id="agent-simple", metadata={"team": "core"})
     await repo.append_event(RunStarted(run_id="r-simple", sequence=1, occurred_at=NOW))
 
-    by_agent = await repo.list_runs(agent_id="researcher")
+    by_agent = await repo.list_runs(agent_id="agent-researcher")
     assert [r.id for r in by_agent.data] == ["r-researcher"]
 
     by_status = await repo.list_runs(status=RunStatus.RUNNING)

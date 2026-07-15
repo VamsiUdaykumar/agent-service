@@ -43,8 +43,8 @@ class AgentProfile(BaseModel):
 
 
 PROFILES: dict[str, AgentProfile] = {
-    "researcher": AgentProfile(
-        agent_id="researcher",
+    "agent-researcher": AgentProfile(
+        agent_id="agent-researcher",
         step_count=StepCountRange(min_steps=5, max_steps=8),
         step_type_weights={
             StepType.MODEL_CALL: 0.6,
@@ -54,8 +54,8 @@ PROFILES: dict[str, AgentProfile] = {
         fail_rate=0.10,
         non_retryable_rate=0.0,
     ),
-    "simple": AgentProfile(
-        agent_id="simple",
+    "agent-simple": AgentProfile(
+        agent_id="agent-simple",
         step_count=StepCountRange(min_steps=2, max_steps=3),
         step_type_weights={
             StepType.MODEL_CALL: 0.7,
@@ -65,8 +65,8 @@ PROFILES: dict[str, AgentProfile] = {
         fail_rate=0.02,
         non_retryable_rate=0.0,
     ),
-    "flaky": AgentProfile(
-        agent_id="flaky",
+    "agent-flaky": AgentProfile(
+        agent_id="agent-flaky",
         step_count=StepCountRange(min_steps=4, max_steps=6),
         step_type_weights={
             StepType.MODEL_CALL: 0.5,

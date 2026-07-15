@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
-from typing import Self
+from typing import Any, Self
 
 import aiosqlite
 
@@ -66,7 +66,7 @@ def _row_to_run_record(row: aiosqlite.Row) -> RunRecord:
         status=RunStatus(row["status"]),
         agent_id=row["agent_id"],
         seed=row["seed"],
-        input=row["input"],
+        input=json.loads(row["input"]),
         metadata=metadata,
         tokens_in=row["tokens_in"],
         tokens_out=row["tokens_out"],
@@ -126,12 +126,13 @@ class SqliteRepository:
         run_id: str,
         agent_id: str,
         seed: int,
-        input: str,
+        input: dict[str, Any],
         metadata: dict[str, str] | None,
         trace_id: str,
         created_at: datetime,
     ) -> RunRecord:
         created_iso = created_at.isoformat()
+        input_json = json.dumps(input, separators=(",", ":"))
         metadata_json = json.dumps(metadata) if metadata is not None else None
         event = RunCreated(
             run_id=run_id,
@@ -153,7 +154,7 @@ class SqliteRepository:
                         RunStatus.PENDING.value,
                         agent_id,
                         seed,
-                        input,
+                        input_json,
                         metadata_json,
                         trace_id,
                         created_iso,

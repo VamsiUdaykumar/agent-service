@@ -7,7 +7,7 @@ Everything else — services, API — talks to a `Repository`.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.domain.events import Event
 from app.domain.status import RunStatus
@@ -21,7 +21,7 @@ class Repository(Protocol):
         run_id: str,
         agent_id: str,
         seed: int,
-        input: str,
+        input: dict[str, Any],
         metadata: dict[str, str] | None,
         trace_id: str,
         created_at: datetime,

@@ -5,7 +5,7 @@ from app.domain.status import StepType
 
 
 def test_all_three_named_profiles_present() -> None:
-    assert set(PROFILES) == {"researcher", "simple", "flaky"}
+    assert set(PROFILES) == {"agent-researcher", "agent-simple", "agent-flaky"}
 
 
 @pytest.mark.parametrize("agent_id,profile", sorted(PROFILES.items()))
@@ -20,10 +20,10 @@ def test_profile_resolves_to_a_valid_config(agent_id: str, profile: AgentProfile
 
 
 def test_researcher_and_simple_have_low_fail_rates_flaky_is_high() -> None:
-    assert PROFILES["researcher"].fail_rate == pytest.approx(0.10)
-    assert PROFILES["simple"].fail_rate == pytest.approx(0.02)
-    assert PROFILES["flaky"].fail_rate == pytest.approx(0.35)
-    assert PROFILES["flaky"].non_retryable_rate == pytest.approx(0.05)
+    assert PROFILES["agent-researcher"].fail_rate == pytest.approx(0.10)
+    assert PROFILES["agent-simple"].fail_rate == pytest.approx(0.02)
+    assert PROFILES["agent-flaky"].fail_rate == pytest.approx(0.35)
+    assert PROFILES["agent-flaky"].non_retryable_rate == pytest.approx(0.05)
 
 
 def test_step_count_range_rejects_max_below_min() -> None:

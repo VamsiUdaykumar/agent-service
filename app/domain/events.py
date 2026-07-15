@@ -9,7 +9,7 @@ execution generator (M3.T6) as it walks a run's step plan.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -31,7 +31,7 @@ class RunCreated(BaseEvent):
     event_type: Literal["run_created"] = "run_created"
     agent_id: str
     seed: int
-    input: str
+    input: dict[str, Any]
     metadata: dict[str, str] | None = None
     trace_id: str
 
