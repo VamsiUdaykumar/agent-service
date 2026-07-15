@@ -644,9 +644,17 @@ Goal: everything a grader/integrator needs to trust and use the system unassiste
   - [ ] M9.T4.2 Write one paragraph each for the five defense questions, citing the specific code/decision that answers them.
         **Depends on:** M9.T3
 
+### Task M9.T6 — Response serialization & shape fixes (gate findings from M4)
+- [ ] **M9.T6** Fix two response issues surfaced during the M4 gate review's curl tour.
+  **Depends on:** M4.T9
+  - [ ] M9.T6.1 Round `cost_usd` to 6 decimal places at the serialization boundary (API schemas — not in storage, which should keep full precision). Envelopes/steps currently emit float noise like `0.08907000000000001`.
+        **Depends on:** M4.T9
+  - [ ] M9.T6.2 `GET /v1/runs/{id}/steps` currently returns a bare JSON array. PRD §3.3 says list responses share the `{data, has_more, next_cursor}` shape. Confirm whether the steps endpoint was deliberately built unpaginated (step counts are small and bounded per run) or should be brought in line with the list-endpoint contract; implement accordingly.
+        **Depends on:** M4.T9
+
 ### Task M9.T5 — Final quality gate
 - [ ] **M9.T5** Run `make lint`, `make typecheck`, `make test` clean on a fresh checkout; remove any leftover TODOs/dead code introduced during earlier milestones.
-  **Depends on:** M9.T1, M9.T4
+  **Depends on:** M9.T1, M9.T4, M9.T6
   - [ ] M9.T5.1 Fix any lint/type/test failures surfaced by a clean-checkout run.
         **Depends on:** M9.T1, M9.T4
   - [ ] M9.T5.2 Grep for `TODO`/`FIXME`/commented-out code and resolve or remove each.

@@ -6,6 +6,7 @@ from app.domain.errors import RunError, RunErrorCode
 from app.domain.events import (
     EVENT_TYPES,
     RunCancelled,
+    RunCancelling,
     RunCompleted,
     RunCreated,
     RunFailed,
@@ -33,6 +34,7 @@ INSTANCES = [
         trace_id="a" * 32,
     ),
     RunStarted(run_id="r1", sequence=2, occurred_at=NOW),
+    RunCancelling(run_id="r1", sequence=2, occurred_at=NOW),
     StepStarted(
         run_id="r1",
         sequence=3,

@@ -22,6 +22,7 @@ from app.domain.errors import RunError, RunErrorCode
 from app.domain.events import (
     Event,
     RunCancelled,
+    RunCancelling,
     RunCompleted,
     RunCreated,
     RunFailed,
@@ -46,6 +47,7 @@ from app.persistence.models import RunPage, RunRecord, StepRecord
 # only touches the `steps` projection and/or accumulates running totals.
 _RUN_STATUS_BY_EVENT: dict[type[Event], RunStatus] = {
     RunStarted: RunStatus.RUNNING,
+    RunCancelling: RunStatus.CANCELLING,
     RunCompleted: RunStatus.COMPLETED,
     RunFailed: RunStatus.FAILED,
     RunCancelled: RunStatus.CANCELLED,
@@ -243,6 +245,11 @@ class SqliteRepository:
             await self._conn.execute(
                 "UPDATE runs SET status = ?, updated_at = ? WHERE id = ?",
                 (RunStatus.RUNNING.value, occurred_iso, event.run_id),
+            )
+        elif isinstance(event, RunCancelling):
+            await self._conn.execute(
+                "UPDATE runs SET status = ?, updated_at = ? WHERE id = ?",
+                (RunStatus.CANCELLING.value, occurred_iso, event.run_id),
             )
         elif isinstance(event, StepStarted):
             await self._conn.execute(

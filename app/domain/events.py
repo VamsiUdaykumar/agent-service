@@ -40,6 +40,14 @@ class RunStarted(BaseEvent):
     event_type: Literal["run_started"] = "run_started"
 
 
+class RunCancelling(BaseEvent):
+    """Appended when a cancel request is accepted (M5.T5.1). `cancelling` is
+    a persisted status transition like any other — written through the same
+    `append_event` path — not an in-memory-only flag (amendment 1)."""
+
+    event_type: Literal["run_cancelling"] = "run_cancelling"
+
+
 class StepStarted(BaseEvent):
     event_type: Literal["step_started"] = "step_started"
     step_id: str
@@ -106,6 +114,7 @@ class RunCancelled(BaseEvent):
 Event = Annotated[
     RunCreated
     | RunStarted
+    | RunCancelling
     | StepStarted
     | StepCompleted
     | StepFailed
@@ -121,6 +130,7 @@ Event = Annotated[
 EVENT_TYPES: dict[str, type[BaseEvent]] = {
     "run_created": RunCreated,
     "run_started": RunStarted,
+    "run_cancelling": RunCancelling,
     "step_started": StepStarted,
     "step_completed": StepCompleted,
     "step_failed": StepFailed,

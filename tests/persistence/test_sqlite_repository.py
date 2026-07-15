@@ -6,6 +6,7 @@ import pytest
 from app.domain.errors import RunError, RunErrorCode
 from app.domain.events import (
     RunCancelled,
+    RunCancelling,
     RunCompleted,
     RunStarted,
     StepCompleted,
@@ -225,6 +226,26 @@ async def test_step_retried_is_logged_but_does_not_change_step_status(
     assert len(steps) == 1  # same step_id, upserted, not duplicated
     assert steps[0].status is StepStatus.RUNNING
     assert steps[0].attempt == 2
+
+
+async def test_cancelling_is_a_persisted_status_transition(repo: SqliteRepository) -> None:
+    await _create(repo)
+    await repo.append_event(RunStarted(run_id="run-1", sequence=1, occurred_at=NOW))
+    await repo.append_event(RunCancelling(run_id="run-1", sequence=1, occurred_at=NOW))
+
+    run = await repo.get_run("run-1")
+    assert run is not None
+    assert run.status is RunStatus.CANCELLING
+
+    await repo.append_event(
+        RunCancelled(
+            run_id="run-1", sequence=1, occurred_at=NOW, tokens_in=0, tokens_out=0,
+            cost_usd=0.0, duration_ms=10,
+        )
+    )
+    run = await repo.get_run("run-1")
+    assert run is not None
+    assert run.status is RunStatus.CANCELLED
 
 
 async def test_terminal_run_rejects_further_writes(repo: SqliteRepository) -> None:
