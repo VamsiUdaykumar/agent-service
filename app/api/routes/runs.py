@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_run_service
@@ -27,10 +27,15 @@ _LAST_EVENT_ID_HEADER = "Last-Event-ID"
 async def create_run(
     body: RunCreateRequest,
     response: Response,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     service: RunService = Depends(get_run_service),
 ) -> RunEnvelope:
     record = await service.create_run(
-        agent_id=body.agent_id, input=body.input, seed=body.seed, metadata=body.metadata
+        agent_id=body.agent_id,
+        input=body.input,
+        seed=body.seed,
+        metadata=body.metadata,
+        idempotency_key=idempotency_key,
     )
     response.headers["Location"] = f"/v1/runs/{record.id}"
     return RunEnvelope.from_record(record)

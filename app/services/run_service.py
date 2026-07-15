@@ -11,10 +11,12 @@ consumption) stays the same (PRD §4).
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import secrets
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.domain.errors import RunError, RunErrorCode
@@ -36,14 +38,33 @@ _MAX_SERVER_GENERATED_SEED = 2**63 - 1
 _HEARTBEAT_INTERVAL_SECONDS = 15.0
 
 
+def _hash_request(
+    agent_id: str, input: dict[str, Any], seed: int | None, metadata: dict[str, str] | None
+) -> str:
+    """Stable JSON canonicalization (sorted keys) so hashing doesn't depend
+    on field/key order — the request body two idempotent retries send is
+    hashed identically regardless of how it was serialized (M6.T2.1).
+    """
+    canonical = json.dumps(
+        {"agent_id": agent_id, "input": input, "seed": seed, "metadata": metadata},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _is_terminal_event(event: Event) -> bool:
     return isinstance(event, RunCompleted | RunFailed | RunCancelled)
 
 
 class RunService:
-    def __init__(self, repository: Repository, sim_speed: float) -> None:
+    def __init__(
+        self, repository: Repository, sim_speed: float, idempotency_key_ttl_hours: int = 24
+    ) -> None:
         self._repository = repository
         self._sim_speed = sim_speed
+        self._idempotency_key_ttl = timedelta(hours=idempotency_key_ttl_hours)
         self._event_bus = RunEventBus()
         # In-process registry: lets the cancel endpoint signal the running
         # task promptly. Never the source of truth for cancellation state —
@@ -58,12 +79,66 @@ class RunService:
         input: dict[str, Any],
         seed: int | None,
         metadata: dict[str, str] | None,
+        idempotency_key: str | None = None,
     ) -> RunRecord:
         profile = PROFILES.get(agent_id)
         if profile is None:
             raise UnknownAgentError(agent_id)
 
-        run_id = new_run_id()
+        if idempotency_key is None:
+            return await self._create_run(new_run_id(), agent_id, input, seed, metadata, profile)
+
+        return await self._create_run_idempotent(
+            idempotency_key, agent_id, input, seed, metadata, profile
+        )
+
+    async def _create_run_idempotent(
+        self,
+        idempotency_key: str,
+        agent_id: str,
+        input: dict[str, Any],
+        seed: int | None,
+        metadata: dict[str, str] | None,
+        profile: AgentProfile,
+    ) -> RunRecord:
+        """Reserve the key and create the run in one atomic repository call
+        (M6.T2.2) — see `Repository.create_run_idempotent` for why
+        reservation and creation must be one transaction, not two: doing
+        them separately leaves a window where a crash between the two
+        leaves the key pointing at a run that doesn't exist.
+        """
+        request_hash = _hash_request(agent_id, input, seed, metadata)
+        candidate_run_id = new_run_id()
+        trace_id = generate_trace_id()
+        resolved_seed = seed if seed is not None else secrets.randbelow(_MAX_SERVER_GENERATED_SEED)
+        now = datetime.now(UTC)
+
+        record, outcome = await self._repository.create_run_idempotent(
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            ttl_cutoff=now - self._idempotency_key_ttl,
+            run_id=candidate_run_id,
+            agent_id=agent_id,
+            seed=resolved_seed,
+            input=input,
+            metadata=metadata,
+            trace_id=trace_id,
+            created_at=now,
+        )
+
+        if outcome == "created":
+            self._spawn_execution(record.id, agent_id, profile, record.seed, input)
+        return record
+
+    async def _create_run(
+        self,
+        run_id: str,
+        agent_id: str,
+        input: dict[str, Any],
+        seed: int | None,
+        metadata: dict[str, str] | None,
+        profile: AgentProfile,
+    ) -> RunRecord:
         trace_id = generate_trace_id()
         # Server-generated when omitted, so every run ever created is
         # replayable from its recipe alone (PRD §3.3).
@@ -79,14 +154,18 @@ class RunService:
             created_at=datetime.now(UTC),
         )
 
+        self._spawn_execution(run_id, agent_id, profile, resolved_seed, input)
+        return record
+
+    def _spawn_execution(
+        self, run_id: str, agent_id: str, profile: AgentProfile, seed: int, input: dict[str, Any]
+    ) -> None:
         cancel_signal = CancelSignal()
         self._cancel_signals[run_id] = cancel_signal
         task = asyncio.create_task(
-            self._execute(run_id, agent_id, profile, resolved_seed, input, cancel_signal)
+            self._execute(run_id, agent_id, profile, seed, input, cancel_signal)
         )
         self._tasks[run_id] = task
-
-        return record
 
     async def _execute(
         self,

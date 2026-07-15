@@ -84,3 +84,39 @@ class Repository(Protocol):
         rejected: pages would shift under concurrent writes (PRD §3.3).
         """
         ...
+
+    async def create_run_idempotent(
+        self,
+        *,
+        idempotency_key: str,
+        request_hash: str,
+        ttl_cutoff: datetime,
+        run_id: str,
+        agent_id: str,
+        seed: int,
+        input: dict[str, Any],
+        metadata: dict[str, str] | None,
+        trace_id: str,
+        created_at: datetime,
+    ) -> tuple[RunRecord, str]:
+        """Reserve `idempotency_key` for `run_id` and, if this call wins the
+        reservation, create the run — both in ONE transaction (PRD §3.3).
+        The `UNIQUE` constraint on `key` is what decides a concurrent race
+        (M6.T3), not application-level locking; doing the reservation and
+        the run creation in one transaction is what makes a crash between
+        the two structurally impossible — either both survive or neither
+        does, so no caller can ever observe a reservation pointing at a
+        run that doesn't exist as a result of a crash here.
+
+        Returns `(record, outcome)`:
+        - `outcome="created"`: this call won (fresh key, or an existing
+          row older than `ttl_cutoff` — lazy 24h expiry, M6.T4, no
+          background sweeper needed at this scale) and its run now exists.
+        - `outcome="replayed"`: a live existing reservation already
+          pointed at another run with a matching `request_hash`; that
+          run's current envelope is returned, and no new run was created.
+
+        Raises `IdempotencyConflictError` if a live existing reservation
+        has a different `request_hash`.
+        """
+        ...

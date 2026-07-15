@@ -12,7 +12,7 @@ async def test_migrations_create_expected_tables(tmp_path) -> None:
         )
         tables = {row[0] for row in await cursor.fetchall()}
 
-    assert {"runs", "steps", "events", "schema_migrations"} <= tables
+    assert {"runs", "steps", "events", "idempotency_keys", "schema_migrations"} <= tables
 
 
 async def test_migrations_are_idempotent(tmp_path) -> None:
@@ -24,4 +24,4 @@ async def test_migrations_are_idempotent(tmp_path) -> None:
         cursor = await conn.execute("SELECT version FROM schema_migrations")
         versions = [row[0] for row in await cursor.fetchall()]
 
-    assert versions == ["001_init.sql"]
+    assert versions == ["001_init.sql", "002_idempotency.sql"]

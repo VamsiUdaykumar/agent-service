@@ -36,3 +36,16 @@ class IllegalTransitionError(Exception):
         self.run_id = run_id
         self.from_status = from_status
         self.to_status = to_status
+
+
+class IdempotencyConflictError(Exception):
+    """Raised when an `Idempotency-Key` is reused with a different request body (PRD §3.3).
+
+    Raised by `Repository.create_run_idempotent` itself (not the service
+    layer): the conflict is detected inside the same atomic
+    reserve-then-create transaction that decides who wins the key.
+    """
+
+    def __init__(self, key: str) -> None:
+        super().__init__(f"Idempotency-Key {key!r} was already used with a different request body")
+        self.key = key

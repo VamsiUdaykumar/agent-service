@@ -54,3 +54,11 @@ class RunPage:
     data: list[RunRecord]
     has_more: bool
     next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class IdempotencyKeyRecord:
+    key: str
+    request_hash: str
+    run_id: str
+    created_at: datetime

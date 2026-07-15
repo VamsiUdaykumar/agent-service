@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.schemas import ErrorEnvelope
 from app.persistence.errors import (
+    IdempotencyConflictError,
     IllegalTransitionError,
     RunNotFoundError,
     TerminalRunConflictError,
@@ -31,6 +32,10 @@ _DOMAIN_ERROR_MAPPING: dict[type[Exception], tuple[int, str, str, str | None]] =
     ),
     UnknownAgentError: (
         status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_request", "unknown_agent_id", "agent_id"
+    ),
+    IdempotencyConflictError: (
+        status.HTTP_409_CONFLICT, "idempotency_error", "idempotency_key_conflict",
+        "Idempotency-Key",
     ),
 }
 

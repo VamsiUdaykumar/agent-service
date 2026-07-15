@@ -35,12 +35,13 @@ from app.domain.events import (
 )
 from app.domain.status import RunStatus, StepStatus, StepType, can_transition, is_terminal
 from app.persistence.errors import (
+    IdempotencyConflictError,
     IllegalTransitionError,
     RunNotFoundError,
     TerminalRunConflictError,
 )
 from app.persistence.migrations import apply_migrations
-from app.persistence.models import RunPage, RunRecord, StepRecord
+from app.persistence.models import IdempotencyKeyRecord, RunPage, RunRecord, StepRecord
 
 # Event types that drive a run-level status transition, and the status they
 # drive it to. Every other event type (StepStarted/Completed/Failed/Retried)
@@ -104,6 +105,15 @@ def _row_to_step_record(row: aiosqlite.Row) -> StepRecord:
     )
 
 
+def _row_to_idempotency_key_record(row: aiosqlite.Row) -> IdempotencyKeyRecord:
+    return IdempotencyKeyRecord(
+        key=row["key"],
+        request_hash=row["request_hash"],
+        run_id=row["run_id"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
 class SqliteRepository:
     def __init__(self, conn: aiosqlite.Connection) -> None:
         self._conn = conn
@@ -133,6 +143,31 @@ class SqliteRepository:
         trace_id: str,
         created_at: datetime,
     ) -> RunRecord:
+        async with self._lock:
+            try:
+                record = await self._insert_run_row(
+                    run_id, agent_id, seed, input, metadata, trace_id, created_at
+                )
+                await self._conn.commit()
+            except Exception:
+                await self._conn.rollback()
+                raise
+        return record
+
+    async def _insert_run_row(
+        self,
+        run_id: str,
+        agent_id: str,
+        seed: int,
+        input: dict[str, Any],
+        metadata: dict[str, str] | None,
+        trace_id: str,
+        created_at: datetime,
+    ) -> RunRecord:
+        """Insert the `pending` row + its `RunCreated` event (sequence 1).
+        Assumes the caller already holds `self._lock` and owns the
+        surrounding commit/rollback.
+        """
         created_iso = created_at.isoformat()
         input_json = json.dumps(input, separators=(",", ":"))
         metadata_json = json.dumps(metadata) if metadata is not None else None
@@ -146,33 +181,26 @@ class SqliteRepository:
             metadata=metadata,
             trace_id=trace_id,
         )
-        async with self._lock:
-            try:
-                await self._conn.execute(
-                    "INSERT INTO runs (id, status, agent_id, seed, input, metadata,"
-                    " trace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        run_id,
-                        RunStatus.PENDING.value,
-                        agent_id,
-                        seed,
-                        input_json,
-                        metadata_json,
-                        trace_id,
-                        created_iso,
-                        created_iso,
-                    ),
-                )
-                await self._conn.execute(
-                    "INSERT INTO events (run_id, sequence, event_type, payload_json, occurred_at)"
-                    " VALUES (?, ?, ?, ?, ?)",
-                    (run_id, 1, event.event_type, event.model_dump_json(), created_iso),
-                )
-                await self._conn.commit()
-            except Exception:
-                await self._conn.rollback()
-                raise
-
+        await self._conn.execute(
+            "INSERT INTO runs (id, status, agent_id, seed, input, metadata,"
+            " trace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                RunStatus.PENDING.value,
+                agent_id,
+                seed,
+                input_json,
+                metadata_json,
+                trace_id,
+                created_iso,
+                created_iso,
+            ),
+        )
+        await self._conn.execute(
+            "INSERT INTO events (run_id, sequence, event_type, payload_json, occurred_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (run_id, 1, event.event_type, event.model_dump_json(), created_iso),
+        )
         return RunRecord(
             id=run_id,
             status=RunStatus.PENDING,
@@ -476,3 +504,89 @@ class SqliteRepository:
         data = [_row_to_run_record(row) for row in page_rows]
         next_cursor = data[-1].id if has_more and data else None
         return RunPage(data=data, has_more=has_more, next_cursor=next_cursor)
+
+    async def create_run_idempotent(
+        self,
+        *,
+        idempotency_key: str,
+        request_hash: str,
+        ttl_cutoff: datetime,
+        run_id: str,
+        agent_id: str,
+        seed: int,
+        input: dict[str, Any],
+        metadata: dict[str, str] | None,
+        trace_id: str,
+        created_at: datetime,
+    ) -> tuple[RunRecord, str]:
+        """Reserve `idempotency_key` and, if this call wins, create the run —
+        both in ONE transaction. That's what makes a crash between
+        "key reserved" and "run created" structurally impossible: either
+        both writes survive (the transaction committed) or neither does
+        (rolled back) — no other caller can ever observe a reservation
+        pointing at a run that doesn't exist as a result of a crash here.
+
+        Returns `(record, outcome)`, `outcome` one of `"created"` /
+        `"replayed"`. Raises `IdempotencyConflictError` if a live
+        reservation for this key already exists with a different
+        `request_hash`.
+        """
+        created_iso = created_at.isoformat()
+        async with self._lock:
+            try:
+                await self._conn.execute(
+                    """
+                    INSERT INTO idempotency_keys (key, request_hash, run_id, created_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT (key) DO UPDATE SET
+                        request_hash = excluded.request_hash,
+                        run_id = excluded.run_id,
+                        created_at = excluded.created_at
+                    WHERE idempotency_keys.created_at < ?
+                    """,
+                    (
+                        idempotency_key, request_hash, run_id, created_iso,
+                        ttl_cutoff.isoformat(),
+                    ),
+                )
+                cursor = await self._conn.execute(
+                    "SELECT key, request_hash, run_id, created_at FROM idempotency_keys"
+                    " WHERE key = ?",
+                    (idempotency_key,),
+                )
+                row = await cursor.fetchone()
+                assert row is not None
+                winner = _row_to_idempotency_key_record(row)
+
+                if winner.run_id != run_id:
+                    if winner.request_hash != request_hash:
+                        raise IdempotencyConflictError(idempotency_key)
+
+                    existing_cursor = await self._conn.execute(
+                        "SELECT * FROM runs WHERE id = ?", (winner.run_id,)
+                    )
+                    existing_row = await existing_cursor.fetchone()
+                    if existing_row is not None:
+                        await self._conn.commit()
+                        return _row_to_run_record(existing_row), "replayed"
+
+                    # Stale reservation: it points at a run that was never
+                    # created (only reachable via corrupted/hand-edited
+                    # data, since this method's own atomicity prevents it
+                    # in normal operation). Reclaim the key for this
+                    # caller — we still hold the lock, so nothing else can
+                    # race us here.
+                    await self._conn.execute(
+                        "UPDATE idempotency_keys SET request_hash = ?, run_id = ?,"
+                        " created_at = ? WHERE key = ?",
+                        (request_hash, run_id, created_iso, idempotency_key),
+                    )
+
+                record = await self._insert_run_row(
+                    run_id, agent_id, seed, input, metadata, trace_id, created_at
+                )
+                await self._conn.commit()
+                return record, "created"
+            except Exception:
+                await self._conn.rollback()
+                raise

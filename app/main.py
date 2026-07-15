@@ -19,7 +19,9 @@ def _make_lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncConte
         repository = await _connect_repository(settings)
         await recover_orphaned_runs(repository)
         app.state.repository = repository
-        app.state.run_service = RunService(repository, settings.sim_speed)
+        app.state.run_service = RunService(
+            repository, settings.sim_speed, settings.idempotency_key_ttl_hours
+        )
         try:
             yield
         finally:
