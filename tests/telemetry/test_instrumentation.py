@@ -22,6 +22,20 @@ def _spans_by_name(exporter: InMemorySpanExporter, name: str) -> list[ReadableSp
     return [s for s in exporter.get_finished_spans() if s.name == name]
 
 
+def _run_duration_data_points(reader: InMemoryMetricReader) -> list[object]:
+    data = reader.get_metrics_data()
+    if data is None:
+        return []
+    return [
+        dp
+        for rm in data.resource_metrics
+        for sm in rm.scope_metrics
+        for metric in sm.metrics
+        if metric.name == "run.duration"
+        for dp in metric.data.data_points
+    ]
+
+
 def _metric_data_points(reader: InMemoryMetricReader) -> list[tuple[str, dict, object]]:
     points: list[tuple[str, dict, object]] = []
     data = reader.get_metrics_data()
@@ -157,6 +171,30 @@ async def test_metrics_emitted_with_correct_labels_and_no_forbidden_cardinality(
     assert all("step_type" in attrs and "outcome" in attrs for attrs in steps_executed)
 
     assert run.status.value == "completed"
+
+
+async def test_run_duration_exemplar_carries_real_value_and_traceID_attribute(
+    instrumented: Instrumented,
+) -> None:
+    """M8.T2 gate findings: (1) the provisioned Grafana Cloud Prometheus data
+    source's exemplar-to-trace link is read-only and expects a `traceID`
+    label, not OTel's spec-hardcoded `trace_id` — confirms the `traceID`
+    filtered attribute (M8.T2.1) reaches a real run's exemplar, not just a
+    synthetic span in a unit test. (2) confirms the exemplar's raw `value`
+    is the actual millisecond duration recorded on the terminal event, not
+    some other scale — ruling out a unit bug as the cause of an empty
+    duration panel.
+    """
+    run = await run_to_completion(instrumented, "agent-simple", seed=1)
+
+    (dp,) = _run_duration_data_points(instrumented.metric_reader)
+    assert dict(dp.attributes) == {"agent_id": "agent-simple"}  # cardinality untouched
+
+    (exemplar,) = dp.exemplars
+    assert exemplar.value > 0
+    assert exemplar.value == dp.sum  # single-run test: the one exemplar is the one observation
+    assert format_trace_id(exemplar.trace_id) == run.trace_id
+    assert dict(exemplar.filtered_attributes) == {"traceID": run.trace_id}
 
 
 async def test_failed_run_records_failed_status_metric_and_root_span_error(

@@ -563,41 +563,43 @@ Goal: one legible trace per run plus cardinality-disciplined metrics. *Done when
 Goal: a customer-actionable analytics view plus one-command demo seeding (PRD §7 Phase 7).
 
 ### Task M8.T1 — Dashboard panels
-- [ ] **M8.T1** Build the six-panel Grafana dashboard (as committed JSON, PRD §3.4): cost over time by agent; output-token share by agent; run outcome rates by agent; step failure/retry rate by step type; duration p50/p95; cost per completed run. Each panel should make the "implied action" from PRD §3.4 legible at a glance.
+- [x] **M8.T1** Build the six-panel Grafana dashboard (as committed JSON, PRD §3.4): cost over time by agent; output-token share by agent; run outcome rates by agent; step failure/retry rate by step type; duration p50/p95; cost per completed run. Each panel should make the "implied action" from PRD §3.4 legible at a glance.
   **Depends on:** M7.T4, M7.T7
-  - [ ] M8.T1.1 Build the cost-over-time-by-agent panel (`cost.usd` counter, rate by `agent_id`).
+  - [x] M8.T1.1 Build the cost-over-time-by-agent panel (`cost.usd` counter, rate by `agent_id`).
         **Depends on:** M7.T4
-  - [ ] M8.T1.2 Build the output-token-share-by-agent panel (`tokens.used` split by `direction`).
+  - [x] M8.T1.2 Build the output-token-share-by-agent panel (`tokens.used` split by `direction`).
         **Depends on:** M7.T4
-  - [ ] M8.T1.3 Build the run-outcome-rate-by-agent panel (`runs.completed` by `status, agent_id`).
+  - [x] M8.T1.3 Build the run-outcome-rate-by-agent panel (`runs.completed` by `status, agent_id`).
         **Depends on:** M7.T4
-  - [ ] M8.T1.4 Build the step failure/retry-rate-by-step-type panel (`steps.executed` by `step_type, outcome`).
+  - [x] M8.T1.4 Build the step failure/retry-rate-by-step-type panel (`steps.executed` by `step_type, outcome`).
         **Depends on:** M7.T4
-  - [ ] M8.T1.5 Build the duration p50/p95 panel (`run.duration` histogram quantiles).
+  - [x] M8.T1.5 Build the duration p50/p95 panel (`run.duration` histogram quantiles).
         **Depends on:** M7.T4
-  - [ ] M8.T1.6 Build the cost-per-completed-run panel (`cost.usd` / `runs.completed{status=completed}`).
+  - [x] M8.T1.6 Build the cost-per-completed-run panel (`cost.usd` / `runs.completed{status=completed}`).
         **Depends on:** M7.T4
-  - [ ] M8.T1.7 Export and commit the dashboard as JSON (provisioning-friendly) in `grafana/dashboard.json`.
+  - [x] M8.T1.7 Export and commit the dashboard as JSON (provisioning-friendly) in `grafana/dashboard.json`.
         **Depends on:** M8.T1.1, M8.T1.2, M8.T1.3, M8.T1.4, M8.T1.5, M8.T1.6
+        **Gate findings fixed (rev 2):** all panels switched from `rate(...[$__rate_interval])` to `sum by (...) (increase(...[$__range]))` (and `histogram_quantile` fed by `increase()` instead of `rate()`) — `make demo` seeds a one-off burst of 4 runs, not continuous traffic, so `rate()` normalized everything down to a near-zero per-second value once it aged past the short default rate-interval lookback: empty duration panel, $0 cost panels, 0-value "Total" outcome legend were all the same root cause. `increase()` over the dashboard's own visible range stays populated for exactly this kind of low-volume/bursty dataset. Also: `currencyUSD` fields now set `decimals: 6` (costs are fractions of a cent) and legend calcs changed from `sum`/`sum,last` to `lastNotNull`/`lastNotNull,max` — summing a flat `increase()`-over-`$__range` series across its own re-evaluated points over-counts; `lastNotNull` reads the actual accumulated value.
 
 ### Task M8.T2 — Exemplars on the p95 panel
 - [ ] **M8.T2** Wire exemplar support on the duration histogram (requires exemplars enabled in the OTel metrics SDK config and Tempo↔Prometheus linkage in Grafana Cloud) so clicking a p95 data point jumps to the actual slow trace (PRD §3.4, §5 step 7).
   **Depends on:** M8.T1, M7.T3
-  - [ ] M8.T2.1 Enable exemplar recording on the `run.duration` histogram instrument.
+  - [x] M8.T2.1 Enable exemplar recording on the `run.duration` histogram instrument. Root-span span-context is now threaded explicitly into `Metrics.record_run_duration` (captured before the span ends in `RunTracer._on_run_terminal`) since spans here are opened via `tracer.start_span`, never `start_as_current_span` — there's no ambient "current span" for the SDK's default `TraceBasedExemplarFilter` to find otherwise. Verified live: `docker compose logs collector` shows a real `Exemplar` block with the correct `trace_id`/`span_id` on every `run.duration` histogram data point after `make demo`.
         **Depends on:** M8.T1.5
+        **Gate finding fixed:** the provisioned Grafana Cloud Prometheus data source is read-only and its exemplar-to-trace link expects a `traceID` label; OTel's spec hardcodes the *native* exemplar trace-ID label as `trace_id` (`prometheus/otlptranslator`'s `ExemplarTraceIDKey`) — not renameable via collector config. Fixed by attaching a redundant `traceID` measurement attribute in `record_run_duration`, kept off the metric's real (bounded) label set via a new `View(instrument_name="run.duration", attribute_keys={"agent_id"})` in `app/telemetry/setup.py` (`RUN_DURATION_VIEW`), which demotes it to the exemplar's `filtered_attributes` instead. Verified live in collector logs: `FilteredAttributes: -> traceID: Str(<run's real trace_id>)`, with `Data point attributes: agent_id: Str(...)` only — cardinality untouched. Also confirmed no unit bug: `Sum`/`Exemplar Value` on `run_duration_milliseconds_bucket` matched real per-run wall-clock durations (e.g. `9779`, `2719`) — the previously-empty duration panel was a query problem (see M8.T1.7 dashboard update below), not an instrumentation one.
   - [ ] M8.T2.2 Configure the Grafana Cloud data source linkage (Prometheus metric → Tempo trace) and confirm click-through works.
         **Depends on:** M8.T2.1, M7.T7
 
 ### Task M8.T3 — `make demo` seed script
-- [ ] **M8.T3** Implement the demo-data script wired into `make demo` (completing the M0.T8.3 stub): create runs across all three profiles with fixed, known seeds; guarantee at least one run that ends `failed` and one that ends `cancelled` (by choosing a seed known to fail, and by issuing a real cancel request mid-run), so the dashboard and demo flow always have interesting data.
+- [x] **M8.T3** Implement the demo-data script wired into `make demo` (completing the M0.T8.3 stub): create runs across all three profiles with fixed, known seeds; guarantee at least one run that ends `failed` and one that ends `cancelled` (by choosing a seed known to fail, and by issuing a real cancel request mid-run), so the dashboard and demo flow always have interesting data.
   **Depends on:** M4.T4, M6.T2, M5.T5, M3.T7, M0.T8
-  - [ ] M8.T3.1 Pick and hardcode seeds (from M3.T7's determinism tests) known to produce: a clean success per profile, and a flaky-profile non-retryable failure.
+  - [x] M8.T3.1 Pick and hardcode seeds (from M3.T7's determinism tests) known to produce: a clean success per profile, and a flaky-profile non-retryable failure.
         **Depends on:** M3.T7
-  - [ ] M8.T3.2 Script POSTs for each seeded run via the real HTTP API (`httpx` against the running compose stack).
+  - [x] M8.T3.2 Script POSTs for each seeded run via the real HTTP API (`httpx` against the running compose stack).
         **Depends on:** M4.T4, M8.T3.1
-  - [ ] M8.T3.3 Script issues a cancel request against one in-flight run shortly after creation.
+  - [x] M8.T3.3 Script issues a cancel request against one in-flight run shortly after creation.
         **Depends on:** M5.T5, M8.T3.2
-  - [ ] M8.T3.4 Wire the script into `make demo`, replacing the M0.T8.3 stub.
+  - [x] M8.T3.4 Wire the script into `make demo`, replacing the M0.T8.3 stub.
         **Depends on:** M8.T3.2, M8.T3.3, M0.T8
 
 ### Task M8.T4 — End-to-end demo verification

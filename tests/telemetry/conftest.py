@@ -19,6 +19,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from app.persistence.models import RunRecord
 from app.persistence.sqlite_repository import SqliteRepository
 from app.services.run_service import RunService
+from app.telemetry.setup import RUN_DURATION_VIEW
 
 FAST = 50_000.0
 
@@ -44,7 +45,11 @@ async def instrumented(tmp_path: Path) -> AsyncIterator[Instrumented]:
     tracer = tracer_provider.get_tracer("test")
 
     metric_reader = InMemoryMetricReader()
-    meter_provider = MeterProvider(metric_readers=[metric_reader])
+    # `views=[RUN_DURATION_VIEW]` mirrors `configure_metrics` (M8.T2.1) — the
+    # `traceID` exemplar attribute must stay off `run.duration`'s real label
+    # set here too, or this fixture would silently diverge from prod and let
+    # a cardinality regression slip past the tests that use it.
+    meter_provider = MeterProvider(metric_readers=[metric_reader], views=[RUN_DURATION_VIEW])
     meter = meter_provider.get_meter("test")
 
     service = RunService(repository, sim_speed=FAST, tracer=tracer, meter=meter)

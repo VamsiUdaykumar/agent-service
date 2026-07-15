@@ -13,11 +13,20 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import MetricReader, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import View
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 
 from app.config import Settings
+
+# Restricts `run.duration`'s own (cardinality-bounded) label set to
+# `agent_id` — without this, the extra `traceID` attribute
+# `Metrics.record_run_duration` attaches for exemplar linkage (M8.T2.1)
+# would otherwise be promoted straight into the metric's real data-point
+# labels instead of being demoted to the exemplar's `filtered_attributes`,
+# turning a bounded metric into an unbounded, per-run one.
+RUN_DURATION_VIEW = View(instrument_name="run.duration", attribute_keys={"agent_id"})
 
 
 def _resource(settings: Settings) -> Resource:
@@ -46,4 +55,6 @@ def configure_metrics(
     reader = metric_reader or PeriodicExportingMetricReader(
         OTLPMetricExporter(endpoint=f"{settings.otel_exporter_otlp_endpoint}/v1/metrics")
     )
-    return MeterProvider(resource=_resource(settings), metric_readers=[reader])
+    return MeterProvider(
+        resource=_resource(settings), metric_readers=[reader], views=[RUN_DURATION_VIEW]
+    )

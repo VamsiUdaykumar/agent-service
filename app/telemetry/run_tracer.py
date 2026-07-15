@@ -7,7 +7,7 @@ as long as `RunService._execute`'s coroutine (PRD §3.4).
 
 from __future__ import annotations
 
-from opentelemetry.trace import Span, Status, StatusCode, Tracer
+from opentelemetry.trace import Span, Status, StatusCode, Tracer, set_span_in_context
 
 from app.domain.errors import RunError
 from app.domain.events import (
@@ -164,7 +164,11 @@ class RunTracer:
         else:
             status_label = "cancelled"
 
+        duration_context = None
         if self._root_span is not None:
+            # Captured before `.end()` — exemplar attachment (M8.T2.1) needs
+            # the span's SpanContext, not whether it's still recording.
+            duration_context = set_span_in_context(self._root_span)
             if isinstance(event, RunFailed):
                 record_error(self._root_span, event.error)
             elif isinstance(event, RunCompleted):
@@ -173,7 +177,12 @@ class RunTracer:
             self._root_span = None
 
         self._metrics.record_run_completed(agent_id=self._agent_id, status=status_label)
-        self._metrics.record_run_duration(agent_id=self._agent_id, duration_ms=event.duration_ms)
+        self._metrics.record_run_duration(
+            agent_id=self._agent_id,
+            duration_ms=event.duration_ms,
+            context=duration_context,
+            trace_id=self._trace_id,
+        )
 
     def _record_tokens_and_cost(
         self, tokens_in: int | None, tokens_out: int | None, cost_usd: float | None

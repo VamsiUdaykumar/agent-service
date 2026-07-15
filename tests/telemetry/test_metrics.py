@@ -1,12 +1,25 @@
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.trace import format_trace_id, set_span_in_context
 
 from app.telemetry.metrics import Metrics
+from app.telemetry.setup import RUN_DURATION_VIEW
 
 
 def _metrics() -> tuple[Metrics, InMemoryMetricReader]:
     reader = InMemoryMetricReader()
     provider = MeterProvider(metric_readers=[reader])
+    return Metrics(provider.get_meter("test")), reader
+
+
+def _metrics_with_run_duration_view() -> tuple[Metrics, InMemoryMetricReader]:
+    """Mirrors `configure_metrics`'s real `MeterProvider` wiring (M8.T2.1) —
+    needed to test the `traceID` exemplar attribute's cardinality-safety,
+    since that only holds with the view in place.
+    """
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader], views=[RUN_DURATION_VIEW])
     return Metrics(provider.get_meter("test")), reader
 
 
@@ -37,6 +50,71 @@ def test_record_run_duration_labels_are_bounded() -> None:
     (name, attrs), = _points(reader)
     assert name == "run.duration"
     assert attrs == {"agent_id": "agent-simple"}
+
+
+def test_record_run_duration_without_context_records_no_exemplar() -> None:
+    """No span context passed (e.g. root span already gone) — nothing to
+    attach an exemplar to. Confirms the default arg doesn't crash."""
+    metrics, reader = _metrics()
+    metrics.record_run_duration(agent_id="agent-simple", duration_ms=42.0)
+    data = reader.get_metrics_data()
+    assert data is not None
+    dp = data.resource_metrics[0].scope_metrics[0].metrics[0].data.data_points[0]
+    assert list(dp.exemplars) == []
+
+
+def test_record_run_duration_with_sampled_span_context_attaches_exemplar() -> None:
+    """M8.T2.1: passing the run's root-span context (captured before the
+    span ends, per `RunTracer._on_run_terminal`) is what lets the SDK's
+    default `TraceBasedExemplarFilter` attach an exemplar — the mechanism
+    the p95 dashboard panel's click-through-to-trace relies on.
+    """
+    metrics, reader = _metrics()
+    tracer = TracerProvider().get_tracer("test")
+    span = tracer.start_span("run")
+    context = set_span_in_context(span)
+
+    metrics.record_run_duration(agent_id="agent-simple", duration_ms=42.0, context=context)
+    span.end()
+
+    data = reader.get_metrics_data()
+    assert data is not None
+    dp = data.resource_metrics[0].scope_metrics[0].metrics[0].data.data_points[0]
+    (exemplar,) = dp.exemplars
+    assert exemplar.trace_id == span.get_span_context().trace_id
+    assert exemplar.span_id == span.get_span_context().span_id
+    assert exemplar.value == 42.0
+
+
+def test_record_run_duration_trace_id_becomes_traceID_exemplar_attribute_only() -> None:
+    """M8.T2.1 gate finding: the provisioned Grafana Cloud Prometheus data
+    source is read-only and its exemplar-to-trace link expects a `traceID`
+    label — but the OTel spec hardcodes the *native* exemplar trace-ID label
+    as `trace_id` (`prometheus/otlptranslator`'s `ExemplarTraceIDKey`), which
+    no collector config can rename. So `trace_id=` attaches a redundant
+    `traceID` attribute instead. It must land only on the exemplar's
+    `filtered_attributes` (via the `run.duration` view's `attribute_keys`),
+    never on the metric's own data-point labels — otherwise every run would
+    mint its own unbounded `run.duration{traceID=...}` series.
+    """
+    metrics, reader = _metrics_with_run_duration_view()
+    tracer = TracerProvider().get_tracer("test")
+    span = tracer.start_span("run")
+    context = set_span_in_context(span)
+    trace_id_hex = format_trace_id(span.get_span_context().trace_id)
+
+    metrics.record_run_duration(
+        agent_id="agent-simple", duration_ms=42.0, context=context, trace_id=trace_id_hex
+    )
+    span.end()
+
+    data = reader.get_metrics_data()
+    assert data is not None
+    dp = data.resource_metrics[0].scope_metrics[0].metrics[0].data.data_points[0]
+    assert dict(dp.attributes) == {"agent_id": "agent-simple"}  # cardinality untouched
+
+    (exemplar,) = dp.exemplars
+    assert dict(exemplar.filtered_attributes) == {"traceID": trace_id_hex}
 
 
 def test_record_tokens_used_labels_are_bounded() -> None:
