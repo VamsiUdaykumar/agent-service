@@ -1,4 +1,4 @@
-.PHONY: up down test lint typecheck demo
+.PHONY: up down test lint typecheck demo openapi
 
 up:
 	docker compose up --build
@@ -20,3 +20,7 @@ typecheck:
 # running — the two-command startup promise (PRD §6).
 demo:
 	python scripts/demo.py
+
+# Regenerates the committed openapi.json (M9.T1.2) after a route/schema change.
+openapi:
+	python scripts/export_openapi.py

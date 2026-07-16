@@ -580,6 +580,7 @@ Goal: a customer-actionable analytics view plus one-command demo seeding (PRD §
   - [x] M8.T1.7 Export and commit the dashboard as JSON (provisioning-friendly) in `grafana/dashboard.json`.
         **Depends on:** M8.T1.1, M8.T1.2, M8.T1.3, M8.T1.4, M8.T1.5, M8.T1.6
         **Gate findings fixed (rev 2):** all panels switched from `rate(...[$__rate_interval])` to `sum by (...) (increase(...[$__range]))` (and `histogram_quantile` fed by `increase()` instead of `rate()`) — `make demo` seeds a one-off burst of 4 runs, not continuous traffic, so `rate()` normalized everything down to a near-zero per-second value once it aged past the short default rate-interval lookback: empty duration panel, $0 cost panels, 0-value "Total" outcome legend were all the same root cause. `increase()` over the dashboard's own visible range stays populated for exactly this kind of low-volume/bursty dataset. Also: `currencyUSD` fields now set `decimals: 6` (costs are fractions of a cent) and legend calcs changed from `sum`/`sum,last` to `lastNotNull`/`lastNotNull,max` — summing a flat `increase()`-over-`$__range` series across its own re-evaluated points over-counts; `lastNotNull` reads the actual accumulated value.
+        **Gate findings fixed (rev 3, M9.T6):** legend "Last" still read 0 on the outcome-rate/step-failure panels, and `agent-simple`'s cost panel rendered `$0.000000`, despite real non-zero data. Root-caused by live-checking `docker compose logs collector`: every instrument is a `Cumulative` OTel sum that's genuinely non-zero at the source (confirmed `cost_usd_total{agent_id="agent-simple"} = 0.020060`, `runs_completed_total{agent_id="agent-simple",status="completed"} = 1`) — the bug was in `increase(counter[$__range])` itself, not the instrumentation. `make demo` produces exactly one increment per counter series; Prometheus's `increase()` extrapolates over so few samples that it can round a true value of `1` down to `0` (a documented PromQL pitfall on sparse/bursty series, distinct from the rev-2 `rate()` problem). Fixed by reading the raw cumulative counter directly — `sum by (...) (metric_total)`, no `increase()`/`rate()` wrapper — on panels 1, 2, 3, 4, 6; panel 5 (duration p50/p95) still needs `increase()` feeding `histogram_quantile`, the only valid way to compute a quantile from bucket counts. Panels 3/4 also switched `drawStyle` from `bars` to `line`+`fillOpacity` (stacked area) since a raw cumulative value plotted as bars read as a solid block rather than a legible trend.
 
 ### Task M8.T2 — Exemplars on the p95 panel
 - [ ] **M8.T2** Wire exemplar support on the duration histogram (requires exemplars enabled in the OTel metrics SDK config and Tempo↔Prometheus linkage in Grafana Cloud) so clicking a p95 data point jumps to the actual slow trace (PRD §3.4, §5 step 7).
@@ -615,51 +616,53 @@ Goal: a customer-actionable analytics view plus one-command demo seeding (PRD §
 Goal: everything a grader/integrator needs to trust and use the system unassisted (PRD §7 Phase 8).
 
 ### Task M9.T1 — OpenAPI spec review & commit
-- [ ] **M9.T1** Review the FastAPI-generated OpenAPI schema for completeness (every endpoint documented, every error response modeled, examples present on key schemas), then export and commit `openapi.json` at the repo root, matching PRD §2's "shippable OpenAPI spec" requirement.
+- [x] **M9.T1** Review the FastAPI-generated OpenAPI schema for completeness (every endpoint documented, every error response modeled, examples present on key schemas), then export and commit `openapi.json` at the repo root, matching PRD §2's "shippable OpenAPI spec" requirement.
   **Depends on:** M4.T9, M6.T5, M5.T7
-  - [ ] M9.T1.1 Add/adjust FastAPI route metadata (`summary`, `description`, `responses=`) so `/docs` reads as documentation, not a schema dump.
+  - [x] M9.T1.1 Add/adjust FastAPI route metadata (`summary`, `description`, `responses=`) so `/docs` reads as documentation, not a schema dump. Also fixed a real accuracy bug found along the way: FastAPI's default 422 response documented its own `HTTPValidationError` shape, but the app's exception handlers rewrite every error — including validation failures — into `ErrorEnvelope`. Every route's `responses=` now points 404/409/422 at `ErrorEnvelope` so `/docs` matches the actual wire format. Added examples to `RunCreateRequest` and `ErrorEnvelope`, field-level descriptions on the envelope/step/error schemas, an app-level description, and an `openapi_tags` entry for `runs`.
         **Depends on:** M4.T9
-  - [ ] M9.T1.2 Export `openapi.json` via a script (`app.openapi()` dumped to file) and commit it.
+  - [x] M9.T1.2 Export `openapi.json` via a script (`app.openapi()` dumped to file) and commit it. Added `scripts/export_openapi.py` + `make openapi` target for regenerating it after future route/schema changes.
         **Depends on:** M9.T1.1
 
 ### Task M9.T2 — README
-- [ ] **M9.T2** Write the README: quickstart (`make up`, two commands, no accounts required) → `make demo` walkthrough → architecture diagram (M9.T3) → one-line rationale per major decision (pointing back to PRD §2's defensibility principle) → curl tour of the API → screenshots from M8.T4.1.
+- [x] **M9.T2** Write the README: quickstart (`make up`, two commands, no accounts required) → `make demo` walkthrough → architecture diagram (M9.T3) → one-line rationale per major decision (pointing back to PRD §2's defensibility principle) → curl tour of the API → screenshots from M8.T4.1.
   **Depends on:** M8.T4, M9.T1
-  - [ ] M9.T2.1 Write the quickstart and demo sections, verified by actually running them from a clean checkout.
+  - [x] M9.T2.1 Write the quickstart and demo sections, verified by actually running them from a clean checkout.
         **Depends on:** M8.T4
-  - [ ] M9.T2.2 Write the one-line-decisions section, condensing PRD §2/§4/§6's "alternative it beat" framing.
+  - [x] M9.T2.2 Write the one-line-decisions section, condensing PRD §2/§4/§6's "alternative it beat" framing.
         **Depends on:** M9.T1
-  - [ ] M9.T2.3 Write the curl tour (create → poll → SSE follow → cancel → idempotent retry) and embed the M8.T4.1 screenshots.
+  - [x] M9.T2.3 Write the curl tour (create → poll → SSE follow → cancel → idempotent retry) and embed the M8.T4.1 screenshots. **Screenshot note:** the three M8.T4.1 screenshots (researcher waterfall, flaky retry trace, dashboard) weren't available in this pass — the files found under the expected path were two dashboard bug-repro shots and one unrelated Docker Desktop settings screenshot. Per user decision, the README embeds `docs/images/{researcher-waterfall,flaky-retry-trace,dashboard}.png` as placeholders (see `docs/images/README.md` for what each should show); to be filled in after M9.T6's dashboard fix.
         **Depends on:** M9.T2.1
 
 ### Task M9.T3 — Architecture diagram
-- [ ] **M9.T3** Produce an architecture diagram (Mermaid, embedded in the README, or a committed image) covering PRD §4's component table and §5's internal data-flow: API → service → {persistence, runner} → {SQLite, OTel Collector → Grafana}.
+- [x] **M9.T3** Produce an architecture diagram (Mermaid, embedded in the README, or a committed image) covering PRD §4's component table and §5's internal data-flow: API → service → {persistence, runner} → {SQLite, OTel Collector → Grafana}.
   **Depends on:** M7.T8, M8.T4
-  - [ ] M9.T3.1 Draft the diagram covering all six components from PRD §4.
+  - [x] M9.T3.1 Draft the diagram covering all six components from PRD §4. Embedded as a Mermaid `flowchart TB` in the README's Architecture section, paired with the component table from PRD §4.
         **Depends on:** M7.T8, M8.T4
 
 ### Task M9.T4 — Demo rehearsal & defense prep
-- [ ] **M9.T4** Rehearse the full developer flow from PRD §5 end to end against the shipped README, and prepare crisp answers to the five defense questions named in PRD §7 Phase 8: event log & projections, SSE resume, durable-first lifecycle, spans vs. events, metric cardinality.
+- [x] **M9.T4** Rehearse the full developer flow from PRD §5 end to end against the shipped README, and prepare crisp answers to the five defense questions named in PRD §7 Phase 8: event log & projections, SSE resume, durable-first lifecycle, spans vs. events, metric cardinality.
   **Depends on:** M9.T2, M9.T3
-  - [ ] M9.T4.1 Walk PRD §5 steps 1–8 verbatim against the running system, noting any friction.
+  - [x] M9.T4.1 Walk PRD §5 steps 1–8 verbatim against the running system, noting any friction. Ran live against `docker compose up` + the exact curl tour in the README: create (202 + Location + trace_id), SSE follow, disconnect/resume with `Last-Event-ID` (verified byte-exact continuation at sequence 6), poll, steps, cancel (202 → `cancelled`, second cancel → 409), idempotent retry (same key+body → identical `id`/`created_at` twice; different body → 409). No friction found — every step worked exactly as documented on the first try.
         **Depends on:** M9.T2
-  - [ ] M9.T4.2 Write one paragraph each for the five defense questions, citing the specific code/decision that answers them.
+  - [x] M9.T4.2 Write one paragraph each for the five defense questions, citing the specific code/decision that answers them. See `docs/defense-questions.md`; each answer's code references (line numbers, test names) were verified against the actual source, not asserted from memory.
         **Depends on:** M9.T3
 
 ### Task M9.T6 — Response serialization & shape fixes (gate findings from M4)
-- [ ] **M9.T6** Fix two response issues surfaced during the M4 gate review's curl tour.
+- [x] **M9.T6** Fix two response issues surfaced during the M4 gate review's curl tour, plus two dashboard bugs surfaced during M9 polish.
   **Depends on:** M4.T9
-  - [ ] M9.T6.1 Round `cost_usd` to 6 decimal places at the serialization boundary (API schemas — not in storage, which should keep full precision). Envelopes/steps currently emit float noise like `0.08907000000000001`.
+  - [x] M9.T6.1 Round `cost_usd` to 6 decimal places at the serialization boundary (API schemas — not in storage, which should keep full precision). Envelopes/steps currently emit float noise like `0.08907000000000001`. Implemented via `field_serializer` on `RunEnvelope.cost_usd` and `StepOut.cost_usd` in `app/api/schemas.py`; verified live that storage keeps full precision (`0.020496999999999998` in SQLite) while the API rounds it (`0.020497`).
         **Depends on:** M4.T9
-  - [ ] M9.T6.2 `GET /v1/runs/{id}/steps` currently returns a bare JSON array. PRD §3.3 says list responses share the `{data, has_more, next_cursor}` shape. Confirm whether the steps endpoint was deliberately built unpaginated (step counts are small and bounded per run) or should be brought in line with the list-endpoint contract; implement accordingly.
+  - [x] M9.T6.2 `GET /v1/runs/{id}/steps` currently returns a bare JSON array. PRD §3.3 says list responses share the `{data, has_more, next_cursor}` shape. Decision: bring it in line — added `StepListResponse` (`app/api/schemas.py`) with `has_more` always `false` and `next_cursor` always `null` (steps are never paginated; a profile caps at ~8 top-level steps + one level of sub-agent nesting), so every list-shaped endpoint in the API shares one predictable envelope rather than a client needing a special case for "is this one paginated."
+        **Depends on:** M4.T9
+  - [x] M9.T6.3 *(new, found during M9 polish)* Dashboard legend "Last" calc read `0` on the outcome-rate/step-failure panels, and `agent-simple`'s cost panel rendered `$0.000000`, despite real non-zero data. Root-caused live via `docker compose logs collector`: every instrument is a `Cumulative` OTel sum, genuinely non-zero at the source — the bug was `increase(counter[$__range])` extrapolating a single-increment demo counter down toward 0 (a real PromQL pitfall on sparse series, distinct from the rev-2 `rate()` fix). Fixed by reading the raw cumulative counter directly (no `increase()`/`rate()`) on panels 1/2/3/4/6 in `grafana/dashboard.json` (rev 3); panel 5's `histogram_quantile` still needs `increase()`, which is mathematically required there. See the M8.T1.7 gate-findings note (rev 3) for full detail.
         **Depends on:** M4.T9
 
 ### Task M9.T5 — Final quality gate
-- [ ] **M9.T5** Run `make lint`, `make typecheck`, `make test` clean on a fresh checkout; remove any leftover TODOs/dead code introduced during earlier milestones.
+- [x] **M9.T5** Run `make lint`, `make typecheck`, `make test` clean on a fresh checkout; remove any leftover TODOs/dead code introduced during earlier milestones.
   **Depends on:** M9.T1, M9.T4, M9.T6
-  - [ ] M9.T5.1 Fix any lint/type/test failures surfaced by a clean-checkout run.
+  - [x] M9.T5.1 Fix any lint/type/test failures surfaced by a clean-checkout run. `ruff check .` clean, `mypy app` clean (39 source files), `pytest` (`SIM_SPEED=100`) 195/195 passing.
         **Depends on:** M9.T1, M9.T4
-  - [ ] M9.T5.2 Grep for `TODO`/`FIXME`/commented-out code and resolve or remove each.
+  - [x] M9.T5.2 Grep for `TODO`/`FIXME`/commented-out code and resolve or remove each. Only hit was the literal string "TODO" inside `docs/todo.md`'s own name/content (expected); no TODO/FIXME/XXX markers or dead code in `app/`, `tests/`, or `scripts/`.
         **Depends on:** M9.T5.1
 
 ---

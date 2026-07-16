@@ -3,7 +3,7 @@
     {
       "name": "DS_PROMETHEUS",
       "label": "Prometheus",
-      "description": "Grafana Cloud Mimir/Prometheus data source receiving OTLP metrics via the collector (see otel-collector-config.yaml). Metric names below are the OTLP→Prometheus-translated forms of the five instruments in app/telemetry/metrics.py: a monotonic Sum with unit \"1\" becomes `<name>_total`; a Histogram with unit \"ms\" becomes `<name>_milliseconds_{bucket,sum,count}`. Panels use `increase(...[$__range])` rather than `rate(...[$__rate_interval])` deliberately: `make demo` seeds a handful of one-off runs, not continuous traffic, and `rate()` normalizes a single burst down to a per-second value that reads as ~$0/0 once it ages out of the short default rate-interval lookback. `increase()` over the dashboard's own visible window stays populated and legible for exactly this kind of low-volume, bursty dataset (standard Prometheus guidance for histogram_quantile on sparse series too) — swap back to rate() if/when this is fed by continuous production traffic.",
+      "description": "Grafana Cloud Mimir/Prometheus data source receiving OTLP metrics via the collector (see otel-collector-config.yaml). Metric names below are the OTLP→Prometheus-translated forms of the five instruments in app/telemetry/metrics.py: a monotonic Sum with unit \"1\" becomes `<name>_total`; a Histogram with unit \"ms\" becomes `<name>_milliseconds_{bucket,sum,count}`. All five instruments are Cumulative sums that never reset within a demo session (verified live via `docker compose logs collector`), so the cost/count panels (1, 2, 3, 4, 6) read the raw counter directly — `sum by (...) (metric_total)` — rather than wrapping it in `increase()`/`rate()`. This is a deliberate departure from the earlier rev-2 fix: `make demo` seeds exactly ONE completed run per agent, i.e. a single-increment counter, and `increase(counter[$__range])` extrapolates over so few samples that it can round below 1 and format as 0 (confirmed: raw `runs_completed_total{agent_id=\"agent-simple\",status=\"completed\"}` is a clean integer `1`, but `increase()` over the same window was observed reading as 0 in the legend). Reading the raw cumulative value has no extrapolation math, so `lastNotNull` always reflects the true accumulated total. Only the duration histogram (panel 5) still needs `increase()` feeding `histogram_quantile` — that's the only mathematically valid way to compute a quantile from bucket counts, low-volume or not. If this dashboard is ever pointed at continuous production traffic instead of one-off demo bursts, panels 1/2/3/4/6 should switch back to `rate()`/`increase()` over a bounded window so old activity ages out.",
       "type": "datasource",
       "pluginId": "prometheus",
       "pluginName": "Prometheus"
@@ -25,7 +25,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Cost over time by agent",
-      "description": "Implied action: which agent is driving spend right now — the first thing to look at when a bill spikes. Legend shows the total accrued cost per agent within the dashboard's visible time range.",
+      "description": "Implied action: which agent is driving spend right now — the first thing to look at when a bill spikes. Plots the raw cumulative counter (cost accrued since process start) rather than a windowed increase() — see the datasource note on why. Legend shows the actual accrued total per agent.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "fieldConfig": {
@@ -44,7 +44,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (agent_id) (increase(cost_usd_total[$__range]))",
+          "expr": "sum by (agent_id) (cost_usd_total)",
           "legendFormat": "{{agent_id}}"
         }
       ]
@@ -53,7 +53,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Output-token share by agent",
-      "description": "Implied action: ratio drift is the signal — an agent whose output share creeps up is generating more per call, at output-token prices (typically 3–5x input).",
+      "description": "Implied action: ratio drift is the signal — an agent whose output share creeps up is generating more per call, at output-token prices (typically 3–5x input). Ratio of raw cumulative counters — no increase() extrapolation to distort a low-sample-count ratio.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "fieldConfig": {
@@ -74,7 +74,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (agent_id) (increase(tokens_used_total{direction=\"output\"}[$__range])) / sum by (agent_id) (increase(tokens_used_total[$__range]))",
+          "expr": "sum by (agent_id) (tokens_used_total{direction=\"output\"}) / sum by (agent_id) (tokens_used_total)",
           "legendFormat": "{{agent_id}}"
         }
       ]
@@ -83,7 +83,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Run outcome rate by agent",
-      "description": "Implied action: failed runs still cost money — a rising failed/cancelled count for one agent, relative to its completed count, is a reliability problem independent of the cost panel. Legend shows the count per agent/status within the visible time range — not a per-time-sample sum, which would over-count a flat increase() series.",
+      "description": "Implied action: failed runs still cost money — a rising failed/cancelled count for one agent, relative to its completed count, is a reliability problem independent of the cost panel. Legend shows the raw cumulative count per agent/status — reading the counter directly instead of increase() avoids extrapolation rounding a single-run demo count down to 0.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "fieldConfig": {
@@ -91,8 +91,8 @@
           "unit": "short",
           "decimals": 0,
           "custom": {
-            "drawStyle": "bars",
-            "fillOpacity": 60,
+            "drawStyle": "line",
+            "fillOpacity": 25,
             "stacking": { "mode": "normal", "group": "A" }
           }
         },
@@ -106,7 +106,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (agent_id, status) (increase(runs_completed_total[$__range]))",
+          "expr": "sum by (agent_id, status) (runs_completed_total)",
           "legendFormat": "{{agent_id}} — {{status}}"
         }
       ]
@@ -115,7 +115,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "Step failure/retry rate by step type",
-      "description": "Implied action: localizes problems to a specific tool or model call rather than \"the agent is flaky\" — tells you which step type to go fix. Legend shows the count per step_type/outcome within the visible time range.",
+      "description": "Implied action: localizes problems to a specific tool or model call rather than \"the agent is flaky\" — tells you which step type to go fix. Legend shows the raw cumulative count per step_type/outcome — same raw-counter fix as the outcome-rate panel.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "fieldConfig": {
@@ -123,8 +123,8 @@
           "unit": "short",
           "decimals": 0,
           "custom": {
-            "drawStyle": "bars",
-            "fillOpacity": 60,
+            "drawStyle": "line",
+            "fillOpacity": 25,
             "stacking": { "mode": "normal", "group": "A" }
           }
         },
@@ -138,7 +138,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (step_type, outcome) (increase(steps_executed_total[$__range]))",
+          "expr": "sum by (step_type, outcome) (steps_executed_total)",
           "legendFormat": "{{step_type}} — {{outcome}}"
         }
       ]
@@ -183,7 +183,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Cost per completed run",
-      "description": "Implied action: unit economics — is this agent getting cheaper or more expensive per successful outcome over time, independent of volume.",
+      "description": "Implied action: unit economics — is this agent getting cheaper or more expensive per successful outcome over time, independent of volume. Ratio of raw cumulative counters, same rationale as the other count/cost panels.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "fieldConfig": {
@@ -202,7 +202,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (agent_id) (increase(cost_usd_total[$__range])) / sum by (agent_id) (increase(runs_completed_total{status=\"completed\"}[$__range]))",
+          "expr": "sum by (agent_id) (cost_usd_total) / sum by (agent_id) (runs_completed_total{status=\"completed\"})",
           "legendFormat": "{{agent_id}}"
         }
       ]
@@ -217,6 +217,6 @@
   "timezone": "browser",
   "title": "Agent Service — Cost & Reliability",
   "uid": "agent-service-overview",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

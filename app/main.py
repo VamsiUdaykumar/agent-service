@@ -68,13 +68,33 @@ def create_app(
     app = FastAPI(
         title="Agent Runs API",
         version=settings.otel_service_version,
+        description=(
+            "Start a multi-step agent run, follow it live to completion (poll or SSE, resumable "
+            "across disconnects), and read back what happened and what it cost. Every step is "
+            "instrumented once into an append-only event log (the source of truth — this API "
+            "never reads from OpenTelemetry) and into OTel spans/metrics for the paired trace "
+            "and analytics story. See `trace_id` on the run envelope to jump into the "
+            "corresponding waterfall trace."
+        ),
         lifespan=_make_lifespan(settings, tracer, meter),
+        openapi_tags=[
+            {
+                "name": "runs",
+                "description": "Create, follow, cancel, and read back agent runs — the whole "
+                "product surface.",
+            }
+        ],
     )
 
     install_request_id_middleware(app)
     install_exception_handlers(app)
 
-    @app.get("/health")
+    @app.get(
+        "/health",
+        tags=["meta"],
+        summary="Liveness check",
+        description="Unversioned — used by container orchestration, not the v1 product surface.",
+    )
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 

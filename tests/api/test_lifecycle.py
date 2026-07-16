@@ -38,7 +38,10 @@ async def test_create_then_poll_to_completion(client: httpx.AsyncClient, agent_i
 
     steps_response = await client.get(f"/v1/runs/{body['id']}/steps")
     assert steps_response.status_code == status.HTTP_200_OK
-    assert len(steps_response.json()) >= 1
+    steps_body = steps_response.json()
+    assert len(steps_body["data"]) >= 1
+    assert steps_body["has_more"] is False
+    assert steps_body["next_cursor"] is None
 
 
 async def test_seed_is_server_generated_when_omitted(client: httpx.AsyncClient) -> None:
