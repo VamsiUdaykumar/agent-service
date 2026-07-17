@@ -18,6 +18,34 @@ acting on trends (the dashboard).
 Full design rationale: [`docs/specs.md`](docs/specs.md) (locked PRD).
 Implementation plan with task-level detail: [`docs/todo.md`](docs/todo.md).
 
+## What's built, what's cut
+
+**Built — both required baselines, plus two features, plus three optional
+extensions:**
+
+- **API as a product** and **a trace you can investigate from** (the
+  baselines)
+- **Long-running runs done right** — the brief already demands an answer ("a
+  run can outlast a request"), so we answered it properly: durable-first
+  creation, poll + SSE with `Last-Event-ID` resume, restart recovery
+- **Cost & token accounting** — it compounds the required analytics
+  baseline: the customer-actionable view is cost-shaped, so one data model
+  serves both
+- Extensions: **idempotency keys**, **cancellation** (with its effect on the
+  trace), **exemplars** (metric → trace click-through)
+
+**Cut, deliberately:**
+
+- **Webhooks** — the push counterpart of long-running runs; building both is
+  redundant. Pull (poll + SSE) demos without the caller running
+  infrastructure.
+- **Rate limiting** and **audit trail** — both presuppose multi-tenancy, a
+  named non-goal; they demo poorly single-user.
+- **Batch API** — a loop over run creation unless real batch semantics are
+  built; scope without new signal.
+
+Full rationale per decision: [`docs/specs.md`](docs/specs.md).
+
 ---
 
 ## Quickstart
@@ -205,6 +233,15 @@ flowchart TB
   `histogram_quantile` genuinely needs `increase()` to compute a quantile
   from bucket counts.
 
+**The two I'm least sure about:** (1) the in-process `asyncio.Task`
+executor — right for this scope, but if runs stretched to hours, restart
+recovery marking them `failed` becomes a real product cost; the queue-worker
+seam exists precisely because this line moves. (2) The dashboard's
+raw-counter queries — correct for `make demo`'s burst-shaped data, but a
+production deployment with continuous traffic would want the `rate()`-based
+forms these replaced; the panels are tuned to demo honestly, which is
+itself a trade.
+
 ## Curl tour
 
 ```bash
@@ -270,3 +307,61 @@ See [`docs/defense-questions.md`](docs/defense-questions.md) for the five
 questions named in PRD §7 Phase 8 (event log & projections, SSE resume,
 durable-first lifecycle, spans vs. events, metric cardinality), each
 answered with a pointer to the specific code/decision.
+
+## AI usage
+
+The build ran as a two-loop process: design decisions were made one at a
+time in a separate AI-assisted planning conversation and locked into
+`docs/specs.md`; Claude Code then implemented milestone-by-milestone against
+that spec, stopping at a gate after each one where I independently ran the
+tests and exercised the system by hand. Most of what follows was caught at
+those gates, not by reading diffs.
+
+**Where it helped:** essentially all code volume — scaffolding, the
+event-sourced persistence layer, 195 tests, telemetry wiring. Beyond volume,
+it filled gaps the spec implied but never stated (an in-process pub/sub so
+the SSE tail doesn't poll the DB; an import-linter test making layer
+separation checkable, not aspirational), flagged its own design gaps early
+(a missing `RunCancelling` event type, two milestones before it would have
+bitten), and pushed back on me when I cited spec text from memory that the
+actual file didn't contain — refusing to change code until the spec was
+reconciled.
+
+**Where it was wrong, and how it got caught:**
+
+- **README assumptions (caught by acting as the reviewer).** I downloaded my
+  own repo onto a fresh workspace and strictly followed the README to
+  emulate how an external person would go through the project. The
+  simplified `make` commands didn't work on Windows, so I wrote alternate
+  commands; and there were assumptions about dependencies that made the demo
+  work on my machine but not on a fresh one — it only ran because of a
+  globally installed package a reviewer wouldn't have. I realised the setup
+  steps had to be in the README before anyone else could run it.
+- **`input` typed as `str` (caught at the milestone gate with the spec's own
+  example).** The create endpoint's schema typed `input` as a string; the
+  spec defines it as a JSON object. All 132 tests at that point passed —
+  written by the same author as the code, they shared the same wrong
+  assumption. The gate's curl tour, using the spec's own example payload,
+  got a 422 on the first request. The fix rippled through six packages,
+  including re-finding pinned determinism seeds, since input encoding feeds
+  the RNG.
+- **Idempotency crash-window 500 (caught by adversarial gate review).**
+  Reserve-then-create left a window where a crash stranded the key pointing
+  at a run id that was never created — a client explicitly told retrying was
+  safe would crash the lookup with a raw assertion 500. One review question
+  exposed it; the fix collapsed reserve+create into a single transaction,
+  making the bad state structurally unreachable, plus a test that
+  hand-crafts the corruption and proves the reclaim.
+- **Exemplars silently dropped, then unlinkable (caught only by verifying
+  against the real backend).** The telemetry milestone looked complete — in
+  unit tests. Against the live collector, no exemplar ever attached (spans
+  were never "current" for OTel's filter); once fixed, the trace label our
+  pipeline emits (`trace_id`, hardcoded by the OTel spec) couldn't match
+  Grafana Cloud's read-only provisioned datasource (`traceID`). Solved with
+  a redundant exemplar-only attribute kept off the metric's label set,
+  preserving cardinality discipline.
+
+**The meta-catch:** even the planning artifacts drifted — the AI-drafted PRD
+silently dropped two requirements from this brief (this section, and the
+demo-video format), caught by diffing the final deliverable against the
+original brief before submission.
