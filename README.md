@@ -15,6 +15,9 @@ spans/metrics**, exported through a local Collector to Grafana Cloud.
 (API + SSE), the operator investigating one (traces), and the customer
 acting on trends (the dashboard).
 
+**Demo video:** [watch here](https://www.youtube.com/watch?v=heNAYUa9hxk)
+
+
 ## What's built, what's cut
 
 **Built both required baselines, plus two features, plus three optional
