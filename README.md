@@ -40,9 +40,7 @@ With the stack up, seed it:
 make demo    # seeds all three profiles, one guaranteed failure, one guaranteed cancellation
 ```
 
-OR, without `make` — this one also needs a one-time local Python setup
-first, since it runs on your host rather than in Docker (see the
-[walkthrough](#make-demo-walkthrough) below for why):
+OR, without `make`:
 
 ```bash
 python -m venv .venv
@@ -50,6 +48,10 @@ source .venv/bin/activate   # .venv\Scripts\activate on Windows
 pip install -e ".[dev]"     # pulls in httpx, the only thing scripts/demo.py needs
 python scripts/demo.py
 ```
+
+This one also needs a one-time local Python setup first, since it runs on
+your host rather than in Docker (see the
+[walkthrough](#make-demo-walkthrough) below for why).
 
 What each command actually does: [`make up` walkthrough](#make-up-walkthrough),
 [`make demo` walkthrough](#make-demo-walkthrough).
