@@ -22,11 +22,11 @@ Implementation plan with task-level detail: [`docs/todo.md`](docs/todo.md).
 
 ## Quickstart
 
-Two commands, no accounts required:
+No accounts required. One persistent command, then a one-time local setup
+before the demo-seeding command — in execution order:
 
 ```bash
 make up      # docker compose up --build — serves the API on :8000, /docs for OpenAPI
-make demo    # seeds all three profiles, one guaranteed failure, one guaranteed cancellation
 ```
 
 No `make` on your system (e.g. plain Windows `cmd`)? Every target here is a
@@ -42,6 +42,19 @@ telemetry working. Point it at Grafana Cloud by setting
 (see `.env.example`); everything else about the system is identical either
 way.
 
+With the stack up, seed it with `make demo`. Unlike `make up`, `make demo`
+runs [`scripts/demo.py`](scripts/demo.py) on your **host**, not inside
+Docker (see the [walkthrough](#make-demo-walkthrough) below for why), so a
+fresh clone needs a one-time local Python environment first:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # .venv\Scripts\activate on Windows
+pip install -e ".[dev]"     # pulls in httpx, the only thing scripts/demo.py needs
+
+make demo    # seeds all three profiles, one guaranteed failure, one guaranteed cancellation
+```
+
 Other targets: `make test` (pytest, `SIM_SPEED=100` so the suite runs in
 milliseconds), `make lint` (ruff), `make typecheck` (mypy), `make openapi`
 (regenerate the committed `openapi.json` after a route/schema change),
@@ -51,17 +64,11 @@ milliseconds), `make lint` (ruff), `make typecheck` (mypy), `make openapi`
 
 [`scripts/demo.py`](scripts/demo.py) drives the live stack over real HTTP,
 exactly as an external developer would — it's the only Milestone-8+ code
-that isn't exercised by pytest.
-
-Unlike `make up`, this one runs on your **host**, not inside Docker, so it
-needs its own Python environment — a fresh clone has no venv yet:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate   # .venv\Scripts\activate on Windows
-pip install -e ".[dev]"     # pulls in httpx, the only thing scripts/demo.py needs
-make demo
-```
+that isn't exercised by pytest. That's also why it runs on your host rather
+than in Docker: it talks to the API the same way an external client would,
+over the port `make up` already exposed, so it needs the one-time local
+Python setup shown in [Quickstart](#quickstart) above rather than a container
+of its own.
 
 (Chose the host-setup route over rewriting `scripts/demo.py` onto
 `urllib`/stdlib-only: the script's wait/poll/cancel logic is genuinely async
