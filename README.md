@@ -29,6 +29,11 @@ make up      # docker compose up --build — serves the API on :8000, /docs for 
 make demo    # seeds all three profiles, one guaranteed failure, one guaranteed cancellation
 ```
 
+No `make` on your system (e.g. plain Windows `cmd`)? Every target here is a
+thin wrapper — the raw command is shown inline as a comment above (`make up`)
+or spelled out in [`Makefile`](Makefile) (`make demo`, `make test`, etc.); run
+that command directly instead.
+
 `make up` also starts an OTel Collector alongside the API. It always emits
 traces/metrics to a `debug` exporter you can read straight from
 `docker compose logs collector` — no external account needed to see the
@@ -46,7 +51,25 @@ milliseconds), `make lint` (ruff), `make typecheck` (mypy), `make openapi`
 
 [`scripts/demo.py`](scripts/demo.py) drives the live stack over real HTTP,
 exactly as an external developer would — it's the only Milestone-8+ code
-that isn't exercised by pytest. It seeds:
+that isn't exercised by pytest.
+
+Unlike `make up`, this one runs on your **host**, not inside Docker, so it
+needs its own Python environment — a fresh clone has no venv yet:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # .venv\Scripts\activate on Windows
+pip install -e ".[dev]"     # pulls in httpx, the only thing scripts/demo.py needs
+make demo
+```
+
+(Chose the host-setup route over rewriting `scripts/demo.py` onto
+`urllib`/stdlib-only: the script's wait/poll/cancel logic is genuinely async
+and `httpx` is already a declared dev dependency used by the test suite, so
+a stdlib rewrite would just be a second implementation of the same HTTP
+calls to maintain.)
+
+It seeds:
 
 | Run | Recipe | Outcome |
 |---|---|---|
@@ -64,7 +87,7 @@ directly against the runner before being pinned into the script (see
 After it finishes:
 
 ```bash
-curl http://localhost:8000/v1/runs | jq
+curl http://localhost:8000/v1/runs | jq   # no jq? drop the pipe — omit `| jq`
 ```
 
 ...and import [`grafana/dashboard.json`](grafana/dashboard.json) into
