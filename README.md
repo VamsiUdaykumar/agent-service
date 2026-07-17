@@ -296,13 +296,6 @@ child span, backoff visible as a gap.
 
 ![dashboard](docs/images/dashboard.png)
 
-## Defense questions
-
-See [`docs/defense-questions.md`](docs/defense-questions.md) for the five
-questions named in PRD §7 Phase 8 (event log & projections, SSE resume,
-durable-first lifecycle, spans vs. events, metric cardinality), each
-answered with a pointer to the specific code/decision.
-
 ## AI usage
 
 The build ran as a two-loop process: design decisions were made one at a
@@ -312,14 +305,14 @@ that spec, stopping at a gate after each one where I independently ran the
 tests and exercised the system by hand. Most of what follows was caught at
 those gates, not by reading diffs.
 
-**Where it helped:** essentially all code volume — scaffolding, the
+**Where it helped:** essentially all code volume, scaffolding, the
 event-sourced persistence layer, 195 tests, telemetry wiring. Beyond volume,
 it filled gaps the spec implied but never stated (an in-process pub/sub so
 the SSE tail doesn't poll the DB; an import-linter test making layer
 separation checkable, not aspirational), flagged its own design gaps early
 (a missing `RunCancelling` event type, two milestones before it would have
 bitten), and pushed back on me when I cited spec text from memory that the
-actual file didn't contain — refusing to change code until the spec was
+actual file didn't contain, refusing to change code until the spec was
 reconciled.
 
 **Where it was wrong, and how it got caught:**
@@ -348,7 +341,7 @@ reconciled.
   making the bad state structurally unreachable, plus a test that
   hand-crafts the corruption and proves the reclaim.
 - **Exemplars silently dropped, then unlinkable (caught only by verifying
-  against the real backend).** The telemetry milestone looked complete — in
+  against the real backend).** The telemetry milestone looked complete in
   unit tests. Against the live collector, no exemplar ever attached (spans
   were never "current" for OTel's filter); once fixed, the trace label our
   pipeline emits (`trace_id`, hardcoded by the OTel spec) couldn't match
