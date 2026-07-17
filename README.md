@@ -327,9 +327,7 @@ reconciled.
   steps had to be in the README before anyone else could run it.
 - **`input` typed as `str` (caught at the milestone gate with the spec's own
   example).** The create endpoint's schema typed `input` as a string; the
-  spec defines it as a JSON object. All 132 tests at that point passed —
-  written by the same author as the code, they shared the same wrong
-  assumption. The gate's curl tour, using the spec's own example payload,
+  spec defines it as a JSON object. The gate's curl tour, using the spec's own example payload,
   got a 422 on the first request. The fix rippled through six packages,
   including re-finding pinned determinism seeds, since input encoding feeds
   the RNG.
