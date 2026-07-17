@@ -15,9 +15,6 @@ spans/metrics**, exported through a local Collector to Grafana Cloud.
 (API + SSE), the operator investigating one (traces), and the customer
 acting on trends (the dashboard).
 
-Full design rationale: [`docs/specs.md`](docs/specs.md) (locked PRD).
-Implementation plan with task-level detail: [`docs/todo.md`](docs/todo.md).
-
 ## What's built, what's cut
 
 **Built — both required baselines, plus two features, plus three optional
@@ -44,7 +41,8 @@ extensions:**
 - **Batch API** — a loop over run creation unless real batch semantics are
   built; scope without new signal.
 
-Full rationale per decision: [`docs/specs.md`](docs/specs.md).
+Full design rationale: [`docs/specs.md`](docs/specs.md).
+Implementation plan with task-level detail: [`docs/todo.md`](docs/todo.md).
 
 ---
 
