@@ -671,8 +671,11 @@ Goal: everything a grader/integrator needs to trust and use the system unassiste
 
 Goal: the deferred extensions named in PRD §3.5, built only if time remains.
 
+**DEFERRED.** M0–M9 are green (195 tests, screenshots in README, live Grafana verified); remaining time goes to demo rehearsal instead of M10. Named with one-line costs so deferral reads as judgment, per PRD §3.5's own style:
+
 ### Task M10.T1 — `/runs/{id}/replay` endpoint
 - [ ] **M10.T1** Implement `POST /v1/runs/{id}/replay`: reads the original run's `(agent_id, seed, input)`, calls `create_run` with that recipe, and tags the resulting run's root span with a `replayed_from` attribute pointing at the original run ID (PRD §3.5, §5 step 8).
+  **Deferred:** the manual re-POST path (PRD §5 step 8) already demonstrates the same determinism guarantee proven by M3.T7 — the endpoint is convenience sugar over a capability that already exists, not new signal for the demo.
   **Depends on:** M9.T5, M4.T3, M2.T5, M7.T2
   - [ ] M10.T1.1 Implement the route: look up the original recipe, call `create_run`.
         **Depends on:** M9.T5, M4.T3
@@ -683,6 +686,7 @@ Goal: the deferred extensions named in PRD §3.5, built only if time remains.
 
 ### Task M10.T2 — ETag / If-None-Match on the envelope
 - [ ] **M10.T2** Add an `ETag` header (hash of the envelope) to `GET /v1/runs/{id}` responses; honor `If-None-Match` with `304 Not Modified`, cutting poll bandwidth for long-lived clients (PRD §3.5).
+  **Deferred:** poll bandwidth isn't a demo-visible concern at single-user, single-run-at-a-time scale — the payoff only shows up under a long-lived polling client we don't have time to stage.
   **Depends on:** M9.T5, M4.T5
   - [ ] M10.T2.1 Implement ETag computation and response header.
         **Depends on:** M9.T5, M4.T5
@@ -691,6 +695,7 @@ Goal: the deferred extensions named in PRD §3.5, built only if time remains.
 
 ### Task M10.T3 — Deferred-extension notes
 - [ ] **M10.T3** Document (no code) the remaining deferred extensions named in PRD §3.5 — generated SDK snippet, sampling strategy, alerting, endpoint deprecation policy — each with the one-line cost that justified deferring it, appended to the README's decisions section (M9.T2.2).
+  **Deferred:** falls out along with the rest of M10 — the README's decisions section (M9.T2.2) already carries PRD §3.5's deferral list at PRD granularity; expanding each to its own one-line cost is more polish than the remaining time affords.
   **Depends on:** M9.T5
   - [ ] M10.T3.1 Write the one-line-cost note for each of the four remaining deferred extensions.
         **Depends on:** M9.T5
@@ -716,7 +721,7 @@ M0.T3 → M7.T1 → M7.T2 (uses M4.T3.1's stored trace_id) → M7.T3 ─┐
               M7.T4 ───────────────────────────────────────────┼→ M7.T5 → M7.T6, M7.T7 → M7.T8
 M7.T4 + M7.T7 → M8.T1 → M8.T2 → M8.T3 → M8.T4
 M4.T9 + M6.T5 + M5.T7 → M9.T1 → M9.T2 → M9.T3 → M9.T4 → M9.T5
-M9.T5 → M10.T1, M10.T2, M10.T3   (stretch, optional)
+M9.T5 → M10.T1, M10.T2, M10.T3   (deferred — see Milestone 10 notes)
 ```
 
 ## Suggested build order

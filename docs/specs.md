@@ -73,7 +73,7 @@ The design's north star is defensibility: every included feature has a stated re
 
 ### 3.4 Observability & analytics
 
-- **One trace per run:** root `run` span; child spans per step; sub-agent steps nested one level deep; **each retry attempt is its own child span** so retry latency and backoff are visible as bars and gaps. GenAI semantic conventions + `stackai.*` namespace. Bidirectional linkage: `trace_id` on the envelope, `stackai.run.id` on spans.
+- **One trace per run:** root `run` span; child spans per step; sub-agent steps nested one level deep, with children drawn from the profile's full step-type mix minus `sub_agent` itself (renormalized) — a sub-agent's children can be `model_call` or `tool_call`, not model-call-only; **each retry attempt is its own child span** so retry latency and backoff are visible as bars and gaps. GenAI semantic conventions + `stackai.*` namespace. Bidirectional linkage: `trace_id` on the envelope, `stackai.run.id` on spans.
 - **Metrics (cardinality-disciplined — no `run_id` or `metadata.*` labels):** `runs.completed` (agent_id, status), `run.duration` histogram (agent_id), `tokens.used` (agent_id, direction), `cost.usd` (agent_id), `steps.executed` (step_type, outcome, agent_id). *Labels are for dimensions you graph side by side, not identities you look up.*
 - **Dashboard — six panels, each implying an action:** cost over time by agent; output-token share by agent (ratio drift is the signal); run outcome rates by agent (failed runs still cost money); step failure/retry rate by step type (localizes problems to tools); duration p50/p95 with **exemplars** (click p95 → the actual slow trace); cost per completed run (unit economics).
 
