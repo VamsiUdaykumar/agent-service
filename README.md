@@ -79,9 +79,6 @@ This one also needs a one-time local Python setup first, since it runs on
 your host rather than in Docker (see the
 [walkthrough](#make-demo-walkthrough) below for why).
 
-What each command actually does: [`make up` walkthrough](#make-up-walkthrough),
-[`make demo` walkthrough](#make-demo-walkthrough).
-
 Other targets: `make test` (pytest, `SIM_SPEED=100` so the suite runs in
 milliseconds), `make lint` (ruff), `make typecheck` (mypy), `make openapi`
 (regenerate the committed `openapi.json` after a route/schema change),
