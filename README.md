@@ -22,43 +22,53 @@ Implementation plan with task-level detail: [`docs/todo.md`](docs/todo.md).
 
 ## Quickstart
 
-No accounts required. One persistent command, then a one-time local setup
-before the demo-seeding command — in execution order:
+No accounts required, in execution order:
 
 ```bash
-make up      # docker compose up --build — serves the API on :8000, /docs for OpenAPI
+make up      # serves the API on :8000, /docs for OpenAPI
 ```
 
-No `make` on your system (e.g. plain Windows `cmd`)? Every target here is a
-thin wrapper — the raw command is shown inline as a comment above (`make up`)
-or spelled out in [`Makefile`](Makefile) (`make demo`, `make test`, etc.); run
-that command directly instead.
+OR, without `make` (e.g. plain Windows `cmd`):
 
-`make up` also starts an OTel Collector alongside the API. It always emits
-traces/metrics to a `debug` exporter you can read straight from
-`docker compose logs collector` — no external account needed to see the
-telemetry working. Point it at Grafana Cloud by setting
-`GRAFANA_CLOUD_OTLP_ENDPOINT` / `GRAFANA_CLOUD_OTLP_AUTH_HEADER` in `.env`
-(see `.env.example`); everything else about the system is identical either
-way.
+```bash
+docker compose up --build
+```
 
-With the stack up, seed it with `make demo`. Unlike `make up`, `make demo`
-runs [`scripts/demo.py`](scripts/demo.py) on your **host**, not inside
-Docker (see the [walkthrough](#make-demo-walkthrough) below for why), so a
-fresh clone needs a one-time local Python environment first:
+With the stack up, seed it:
+
+```bash
+make demo    # seeds all three profiles, one guaranteed failure, one guaranteed cancellation
+```
+
+OR, without `make` — this one also needs a one-time local Python setup
+first, since it runs on your host rather than in Docker (see the
+[walkthrough](#make-demo-walkthrough) below for why):
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # .venv\Scripts\activate on Windows
 pip install -e ".[dev]"     # pulls in httpx, the only thing scripts/demo.py needs
-
-make demo    # seeds all three profiles, one guaranteed failure, one guaranteed cancellation
+python scripts/demo.py
 ```
+
+What each command actually does: [`make up` walkthrough](#make-up-walkthrough),
+[`make demo` walkthrough](#make-demo-walkthrough).
 
 Other targets: `make test` (pytest, `SIM_SPEED=100` so the suite runs in
 milliseconds), `make lint` (ruff), `make typecheck` (mypy), `make openapi`
 (regenerate the committed `openapi.json` after a route/schema change),
 `make down`.
+
+## `make up` walkthrough
+
+`make up` runs `docker compose up --build`, which serves the API on `:8000`
+(`/docs` for OpenAPI) and starts an OTel Collector alongside it. The
+Collector always emits traces/metrics to a `debug` exporter you can read
+straight from `docker compose logs collector` — no external account needed
+to see the telemetry working. Point it at Grafana Cloud by setting
+`GRAFANA_CLOUD_OTLP_ENDPOINT` / `GRAFANA_CLOUD_OTLP_AUTH_HEADER` in `.env`
+(see `.env.example`); everything else about the system is identical either
+way.
 
 ## `make demo` walkthrough
 
