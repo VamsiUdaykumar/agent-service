@@ -92,8 +92,8 @@ milliseconds), `make lint` (ruff), `make typecheck` (mypy), `make openapi`
 `make up` runs `docker compose up --build`, which serves the API on `:8000`
 (`/docs` for OpenAPI) and starts an OTel Collector alongside it. The
 Collector always emits traces/metrics to a `debug` exporter you can read
-straight from `docker compose logs collector` — no external account needed
-to see the telemetry working. Point it at Grafana Cloud by setting
+straight from `docker compose logs collector` (no external account needed
+to see the telemetry working). Point it at Grafana Cloud by setting
 `GRAFANA_CLOUD_OTLP_ENDPOINT` / `GRAFANA_CLOUD_OTLP_AUTH_HEADER` in `.env`
 (see `.env.example`); everything else about the system is identical either
 way.
@@ -101,8 +101,7 @@ way.
 ## `make demo` walkthrough
 
 [`scripts/demo.py`](scripts/demo.py) drives the live stack over real HTTP,
-exactly as an external developer would — it's the only Milestone-8+ code
-that isn't exercised by pytest. That's also why it runs on your host rather
+exactly as an external developer would. That's also why it runs on your host rather
 than in Docker: it talks to the API the same way an external client would,
 over the port `make up` already exposed, so it needs the one-time local
 Python setup shown in [Quickstart](#quickstart) above rather than a container
@@ -120,12 +119,12 @@ It seeds:
 |---|---|---|
 | `agent-researcher` | `seed=0` | completes cleanly (5–8 steps, some sub-agent nesting) |
 | `agent-simple` | `seed=0` | completes cleanly (2–3 steps) |
-| `agent-flaky` | `seed=1` | fails — a pinned non-retryable-failure seed, same one M3.T7's determinism test uses |
+| `agent-flaky` | `seed=1` | fails - a pinned non-retryable-failure seed |
 | `agent-researcher` | `seed=999` | cancelled ~0.25s after creation, mid-run |
 
 All four seeds are hardcoded and known by construction, not luck: run
 behavior is a pure function of `(agent_id, seed, input)` (the repo's core
-invariant), so every seed above always produces the same outcome — verified
+invariant), so every seed above always produces the same outcome, verified
 directly against the runner before being pinned into the script (see
 `docs/todo.md` M8.T3.1).
 
@@ -181,61 +180,59 @@ flowchart TB
 | Component | Responsibility | Key decision |
 |---|---|---|
 | **API** (`app/api`) | Routers, schemas, error envelope, SSE | Envelope shared between create/read; overridden 422 handler so validation errors match the one `ErrorEnvelope` shape too |
-| **Domain** (`app/domain`) | State machine, event types, agent profiles — pure, no I/O | Import-clean package is the checkable proof of layer separation |
+| **Domain** (`app/domain`) | State machine, event types, agent profiles | Import-clean package is the checkable proof of layer separation |
 | **Services** (`app/services`) | `RunService`: durable-first create, executor, idempotency | Executor spawns `asyncio.Task`; the queue-worker seam is a one-line comment at that call site |
 | **Persistence** (`app/persistence`) | `Repository` protocol + `SqliteRepository`, append-only log, eager projections | Event append + step row + run totals in one transaction; Postgres seam is one adapter away |
 | **Runner** (`app/runner`) | The fake agent: steps, latency, tokens, cost, failures, retries, sub-agents | All randomness from the recipe-seeded RNG; `SIM_SPEED` scales sleeps only, never recorded durations |
-| **Telemetry** (`app/telemetry`) | OTel setup, span helpers, metric instruments | Spans are telemetry, the log is truth — nothing reads back from OTel |
+| **Telemetry** (`app/telemetry`) | OTel setup, span helpers, metric instruments | Spans are telemetry, the log is truth, nothing reads back from OTel |
 | **OTel Collector** | Receives OTLP, forwards to Grafana Cloud | `debug` exporter always on, so the system runs fully without any account |
 | **Grafana Cloud** | Tempo traces, Mimir metrics, the dashboard | OTLP endpoint is pure config — any backend can be swapped in |
 
 ## Decisions (the alternative each one beat)
 
-- **Durable-first execution** — `POST /v1/runs` persists `pending` *before*
+- **Durable-first execution**: `POST /v1/runs` persists `pending` *before*
   spawning the run, so the `202` never lies. Beats "execute then persist,"
   which can claim a run exists when a crash before the write would leave it
   invisible.
-- **`cancelling` is a persisted status, not an in-memory flag** — a crashed
+- **`cancelling` is a persisted status, not an in-memory flag**: a crashed
   and restarted process can still observe and finish a cancellation from the
   store alone. Beats an in-memory-only signal, which loses the cancel
   request across a restart.
-- **SQLite via `aiosqlite`, repository pattern** — zero-setup, single-writer
+- **SQLite via `aiosqlite`, repository pattern**: zero-setup, single-writer
   is fine for one process; the `Repository` protocol is the documented seam
   to swap in Postgres later without touching call sites.
-- **ULIDs as run IDs** — time-sortable, so the ID doubles as the pagination
+- **ULIDs as run IDs**: time-sortable, so the ID doubles as the pagination
   cursor. Beats UUID4 + offset pagination, which is both less informative
   and shifts pages under concurrent writes (explicitly rejected, PRD §3.3).
-- **`asyncio.Task` in-process executor** — beats standing up a real queue
+- **`asyncio.Task` in-process executor**: beats standing up a real queue
   for this scope; the enqueue seam is a documented one-line swap.
-- **SSE with `Last-Event-ID` resume** — beats WebSockets for a one-way
+- **SSE with `Last-Event-ID` resume**: beats WebSockets for a one-way
   follow: no bidirectional complexity, and correctness falls straight out of
   "the stream is just a tail of the persisted log."
-- **Idempotency via a `UNIQUE` DB constraint** — the concurrent-race case
+- **Idempotency via a `UNIQUE` DB constraint**: the concurrent-race case
   (two requests, same new key) is decided by the database, not app-level
   locking; the loser catches the constraint violation and replays instead of
   erroring.
-- **Cardinality-disciplined metrics** — no `run_id` or `metadata.*` labels,
+- **Cardinality-disciplined metrics**: no `run_id` or `metadata.*` labels,
   ever (enforced by each `record_*` method's signature, not convention).
   Beats the naive version, which would blow up cardinality the moment this
   ran against real traffic.
-- **OTel Collector with a `debug`-exporter fallback** — the app never holds
+- **OTel Collector with a `debug`-exporter fallback**: the app never holds
   vendor credentials (production shape), and the system runs fully with zero
   accounts if Grafana Cloud creds are unset.
-- **Grafana Cloud** over Honeycomb (weaker metrics story) and SigNoz (a
-  heavier compose stack than "two commands, no accounts" wants).
+- **Grafana Cloud**: over Honeycomb and SigNoz (a heavier compose stack).
 - **Cost/count dashboard panels read raw cumulative counters, not
-  `rate()`/`increase()`** — `make demo` produces a one-off burst, not
+  `rate()`/`increase()`**: `make demo` produces a one-off burst, not
   continuous traffic; windowed rate functions extrapolate over so few
-  samples that a true value of `1` can render as `0` (see `docs/todo.md`
-  M9.T6.3). The duration histogram panel is the one exception —
+  samples that a true value of `1` can render as `0`. The duration histogram panel is the one exception,
   `histogram_quantile` genuinely needs `increase()` to compute a quantile
   from bucket counts.
 
 **The two I'm least sure about:** (1) the in-process `asyncio.Task`
-executor — right for this scope, but if runs stretched to hours, restart
+executor is right for this scope, but if runs stretched to hours, restart
 recovery marking them `failed` becomes a real product cost; the queue-worker
 seam exists precisely because this line moves. (2) The dashboard's
-raw-counter queries — correct for `make demo`'s burst-shaped data, but a
+raw-counter queries is correct for `make demo`'s burst-shaped data, but a
 production deployment with continuous traffic would want the `rate()`-based
 forms these replaced; the panels are tuned to demo honestly, which is
 itself a trade.
