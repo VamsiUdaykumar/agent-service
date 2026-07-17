@@ -1,6 +1,6 @@
 # Agent Runs API & Observability
 
-A developer starts an **agent run** — a multi-step execution involving model
+A developer starts an **agent run** i.e a multi-step execution involving model
 calls, tool calls, and occasionally sub-agents — through a public, versioned
 HTTP API, follows it live to completion, and reads back what happened and
 what it cost.
@@ -8,24 +8,24 @@ what it cost.
 Behind the API sits a **seeded, deterministic fake runner**. Every step it
 executes is instrumented once and emitted to two sinks: an append-only
 **SQLite event log** (the source of truth, served back as three
-projections — run envelope, steps, SSE stream) and **OpenTelemetry
+projections -> run envelope, steps, SSE stream) and **OpenTelemetry
 spans/metrics**, exported through a local Collector to Grafana Cloud.
 
-**Instrument once, serve three audiences** — the developer following a run
+**Instrument once, serve three audiences**: the developer following a run
 (API + SSE), the operator investigating one (traces), and the customer
 acting on trends (the dashboard).
 
 ## What's built, what's cut
 
-**Built — both required baselines, plus two features, plus three optional
+**Built both required baselines, plus two features, plus three optional
 extensions:**
 
 - **API as a product** and **a trace you can investigate from** (the
   baselines)
-- **Long-running runs done right** — the brief already demands an answer ("a
+- **Long-running runs done right**: the brief already demands an answer ("a
   run can outlast a request"), so we answered it properly: durable-first
   creation, poll + SSE with `Last-Event-ID` resume, restart recovery
-- **Cost & token accounting** — it compounds the required analytics
+- **Cost & token accounting**: it compounds the required analytics
   baseline: the customer-actionable view is cost-shaped, so one data model
   serves both
 - Extensions: **idempotency keys**, **cancellation** (with its effect on the
@@ -33,12 +33,12 @@ extensions:**
 
 **Cut, deliberately:**
 
-- **Webhooks** — the push counterpart of long-running runs; building both is
+- **Webhooks**: the push counterpart of long-running runs; building both is
   redundant. Pull (poll + SSE) demos without the caller running
   infrastructure.
-- **Rate limiting** and **audit trail** — both presuppose multi-tenancy, a
+- **Rate limiting** and **audit trail**: both presuppose multi-tenancy, a
   named non-goal; they demo poorly single-user.
-- **Batch API** — a loop over run creation unless real batch semantics are
+- **Batch API**: a loop over run creation unless real batch semantics are
   built; scope without new signal.
 
 Full design rationale: [`docs/specs.md`](docs/specs.md).
