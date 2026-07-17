@@ -1,7 +1,7 @@
 # Agent Runs API & Observability
 
 A developer starts an **agent run** i.e a multi-step execution involving model
-calls, tool calls, and occasionally sub-agents — through a public, versioned
+calls, tool calls, and occasionally sub-agents, through a public, versioned
 HTTP API, follows it live to completion, and reads back what happened and
 what it cost.
 
