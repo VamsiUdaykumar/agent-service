@@ -186,7 +186,7 @@ flowchart TB
 | **Runner** (`app/runner`) | The fake agent: steps, latency, tokens, cost, failures, retries, sub-agents | All randomness from the recipe-seeded RNG; `SIM_SPEED` scales sleeps only, never recorded durations |
 | **Telemetry** (`app/telemetry`) | OTel setup, span helpers, metric instruments | Spans are telemetry, the log is truth, nothing reads back from OTel |
 | **OTel Collector** | Receives OTLP, forwards to Grafana Cloud | `debug` exporter always on, so the system runs fully without any account |
-| **Grafana Cloud** | Tempo traces, Mimir metrics, the dashboard | OTLP endpoint is pure config — any backend can be swapped in |
+| **Grafana Cloud** | Tempo traces, Mimir metrics, the dashboard | OTLP endpoint is pure config, any backend can be swapped in |
 
 ## Decisions (the alternative each one beat)
 
@@ -282,12 +282,12 @@ running, or the committed [`openapi.json`](openapi.json).
 _(Added after a live `make demo` + Grafana Cloud run — see
 [`docs/images/README.md`](docs/images/README.md) for what each should show.)_
 
-**Trace waterfall — `agent-researcher`:** root span, per-step children,
+**Trace waterfall - `agent-researcher`:** root span, per-step children,
 sub-agent nesting.
 
 ![researcher waterfall](docs/images/researcher-waterfall.png)
 
-**Trace waterfall — `agent-flaky` retry:** each retry attempt as its own
+**Trace waterfall - `agent-flaky` retry:** each retry attempt as its own
 child span, backoff visible as a gap.
 
 ![flaky retry trace](docs/images/flaky-retry-trace.png)
@@ -322,7 +322,7 @@ reconciled.
   emulate how an external person would go through the project. The
   simplified `make` commands didn't work on Windows, so I wrote alternate
   commands; and there were assumptions about dependencies that made the demo
-  work on my machine but not on a fresh one — it only ran because of a
+  work on my machine but not on a fresh one, it only ran because of a
   globally installed package a reviewer wouldn't have. I realised the setup
   steps had to be in the README before anyone else could run it.
 - **`input` typed as `str` (caught at the milestone gate with the spec's own
@@ -335,7 +335,7 @@ reconciled.
   the RNG.
 - **Idempotency crash-window 500 (caught by adversarial gate review).**
   Reserve-then-create left a window where a crash stranded the key pointing
-  at a run id that was never created — a client explicitly told retrying was
+  at a run id that was never created, a client explicitly told retrying was
   safe would crash the lookup with a raw assertion 500. One review question
   exposed it; the fix collapsed reserve+create into a single transaction,
   making the bad state structurally unreachable, plus a test that
@@ -348,8 +348,3 @@ reconciled.
   Grafana Cloud's read-only provisioned datasource (`traceID`). Solved with
   a redundant exemplar-only attribute kept off the metric's label set,
   preserving cardinality discipline.
-
-**The meta-catch:** even the planning artifacts drifted — the AI-drafted PRD
-silently dropped two requirements from this brief (this section, and the
-demo-video format), caught by diffing the final deliverable against the
-original brief before submission.
