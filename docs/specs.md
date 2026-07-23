@@ -108,8 +108,8 @@ Webhooks, rate limiting, audit trail, batch API. Deferred extensions, named with
 3. Or poll: `GET /v1/runs/{id}` for status and running totals; `GET /v1/runs/{id}/steps` for per-step state (attempts, `last_error`, per-step cost).
 4. Optionally cancel: `POST /v1/runs/{id}/cancel` → watch `cancelling → cancelled` on the stream.
 5. Retry-safe create: resend the same request with the same `Idempotency-Key` → the same run comes back, no double spend.
-6. Investigate: take `trace_id` from the envelope → open the waterfall in Grafana — sub-agent depth, a red failed attempt, backoff gaps, cost per span.
-7. Act on trends: the dashboard — which agent drives spend, whose failures burn money, p95 outliers with exemplar click-through to the guilty trace.
+6. Investigate: take `trace_id` from the envelope → open the waterfall in Grafana → sub-agent depth, a red failed attempt, backoff gaps, cost per span.
+7. Act on trends: the dashboard, which agent drives spend, whose failures burn money, p95 outliers with exemplar click-through to the guilty trace.
 8. Reproduce: re-POST a stored run's `(agent_id, seed, input)` (or `/replay` if built) → an identical run, step for step, laid side by side with the original.
 
 **Internal data flow (per run):**
