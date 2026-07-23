@@ -152,22 +152,22 @@ The API answers reads purely from the log it, never queries the runner. That is 
 
 Ordered so every phase ends runnable, and the riskiest integrations (SSE resume, OTel export) land early enough to fix. Phases 1–4 are the spine; 5–7 make it a product; 8 is the polish that gets graded.
 
-**Phase 0 - Scaffold:** Repo layout per §4, pydantic-settings config, compose file (api + collector with debug fallback), CI-less quality basics (ruff, mypy). *Done when:* `docker compose up` serves `/docs`.
+**Phase 0 - Scaffold:** Repo layout, pydantic-settings config, compose file (api + collector with debug fallback), CI-less quality basics (ruff, mypy). *Done when:* `docker compose up` serves `/docs`.
 
 **Phase 1 - Domain + persistence:** State machine with immutable terminals; event types; migrations; repository with the atomic append-event + update-projections transaction; ULID ids. *Done when:* state-machine and projection unit tests pass (tests #2).
 
-**Phase 2 - Runner:** Profiles config, seeded RNG from the recipe, steps/latency/tokens/cost/failures/retries/sub-agents, `SIM_SPEED`. No HTTP yet — driven by a unit test. *Done when:* determinism test passes (test #1 — the headline claim).
+**Phase 2 - Runner:** Profiles config, seeded RNG from the recipe, steps/latency/tokens/cost/failures/retries/sub-agents, `SIM_SPEED`. No HTTP yet - driven by a unit test. *Done when:* determinism test passes (test #1 - the headline claim).
 
 **Phase 3 - Core API:** `POST /runs` (durable-first, 202 + Location), `GET /runs/{id}`, `/steps`, list with cursor pagination + filters, error envelope + overridden 422 handler, startup recovery. *Done when:* HTTP lifecycle + recovery tests pass (tests #3, #6, #7).
 
-**Phase 4 - SSE + cancellation:** Event stream as log tail, `Last-Event-ID` resume, heartbeats; cancel endpoint with step-boundary semantics and 409-on-terminal. *Done when:* SSE-resume and cancel tests pass (tests #3, #4). **End of day 1 target: phases 0–4.**
+**Phase 4 - SSE + cancellation:** Event stream as log tail, `Last-Event-ID` resume, heartbeats; cancel endpoint with step-boundary semantics and 409-on-terminal. *Done when:* SSE-resume and cancel tests pass (tests #3, #4).
 
 **Phase 5 - Idempotency:** Key table + UNIQUE constraint, replay path, mismatch 409, concurrent-race test (test #5).
 
-**Phase 6 - Telemetry:** Root/step/attempt span tree, GenAI + `stackai.*` attributes, error statuses, the five metric instruments; collector wiring to Grafana Cloud; verify a real run end to end in Tempo. *Done when:* in-memory-exporter assertions pass and a live trace renders correctly.
+**Phase 6 - Telemetry:** Root/step/attempt span tree, attributes, error statuses, the five metric instruments; collector wiring to Grafana Cloud; verify a real run end to end in Tempo. *Done when:* in-memory-exporter assertions pass and a live trace renders correctly.
 
 **Phase 7 - Dashboard + demo data:** Six panels in Grafana, exemplar on the p95 panel; `make demo` seeding all three profiles with known seeds, one failure, one cancellation.
 
-**Phase 8 — Product polish (2 hrs).** OpenAPI spec review + commit `openapi.json`; README (quickstart → demo → architecture diagram → one-line decisions → curl tour → screenshots); demo rehearsal against §5's flow, including the five defense questions (event log & projections, SSE resume, durable-first lifecycle, spans vs. events, metric cardinality).
+**Phase 8 - Product polish:** OpenAPI spec review + commit `openapi.json`; README.
 
 **Stretch, only if phases 0–8 are green:** `/replay` endpoint with `replayed_from` span attribute; ETag on the envelope.
