@@ -1,17 +1,17 @@
-# PRD — Agent Runs API & Observability
+# Product Requirment Document (PRD) - Agent Runs API & Observability
 
-StackAI take-home: a run-execution HTTP API, a seeded fake agent runner, end-to-end OpenTelemetry into a real backend, and a customer-actionable analytics view.
+A run-execution HTTP API, a seeded fake agent runner, end-to-end OpenTelemetry into a real backend, and a customer-actionable analytics view.
 
 ---
 
 ## 1. Project overview
 
-A developer starts an **agent run** — a multi-step execution involving model calls, tool calls, and occasionally sub-agents — through a public, versioned HTTP API, follows it live to completion, and reads back what happened and what it cost. Behind the API sits a **seeded, deterministic fake runner**. Every step it executes is instrumented once and emitted to two sinks:
+A developer starts an **agent run** which is a multi-step execution involving model calls, tool calls, and occasionally sub-agents, through a public, versioned HTTP API, follows it live to completion, and reads back what happened and what it cost. Behind the API sits a **seeded, deterministic fake runner**. Every step it executes is instrumented once and emitted to two sinks:
 
-- an append-only **event log** in SQLite — the product's source of truth, served by the API as three projections (run envelope, steps, SSE stream), and
-- **OpenTelemetry spans and metrics** — exported through a local Collector to Grafana Cloud, where a single run is legible end to end and aggregate dashboards answer customer questions.
+- an append-only **event log** in SQLite: the product's source of truth, served by the API as three projections (run envelope, steps, SSE stream), and
+- **OpenTelemetry spans and metrics**: exported through a local Collector to Grafana Cloud, where a single run is legible end to end and aggregate dashboards answer customer questions.
 
-Guiding sentence: **instrument once, serve three audiences** — the developer following a run (API + SSE), the operator investigating one (traces), and the customer acting on trends (analytics).
+Guiding sentence: **instrument once, serve three audiences**: the developer following a run (API + SSE), the operator investigating one (traces), and the customer acting on trends (analytics).
 
 The design's north star is defensibility: every included feature has a stated reason for inclusion, every excluded feature a stated reason for exclusion, and every architectural choice names the alternative it beat and the seam where the production-scale version would slot in.
 
@@ -21,16 +21,16 @@ The design's north star is defensibility: every included feature has a stated re
 
 **Required baselines (from the brief):**
 
-1. **API as a product** — a public, versioned HTTP surface an external developer could integrate against without asking questions, documented by a shippable OpenAPI spec.
-2. **A trace you can investigate from** — one run is legible end to end in a real observability backend: what happened, where the time went, what it cost, why it failed.
+1. **API as a product**: a public, versioned HTTP surface an external developer could integrate against without asking questions, documented by a shippable OpenAPI spec.
+2. **A trace you can investigate from**: one run is legible end to end in a real observability backend: what happened, where the time went, what it cost, why it failed.
 
 **Chosen features (at least one required; we commit to two):**
 
-3. **Long-running runs done right** — a run outlasts a single request; callers can follow it cleanly to completion, through disconnects and server restarts.
-4. **Cost and token accounting** — per-run and aggregate numbers a customer could trust and act on.
+3. **Long-running runs done right**: a run outlasts a single request; callers can follow it cleanly to completion, through disconnects and server restarts.
+4. **Cost and token accounting**: per-run and aggregate numbers a customer could trust and act on.
 
-*Why these two:* the brief already demands an answer to long-running runs, so doing it properly is cheap relative to its value; cost accounting compounds the required analytics baseline (they share one data model and one instrumentation effort). Together they cover both sides of the role — API/product design and observability.
-*Why not the rest:* webhooks are the push counterpart of long-running runs (redundant with our pull design); rate limiting and audit trail presuppose multi-tenancy (a named non-goal) and demo poorly single-user; batch API is a loop over creation unless real batch semantics are built — scope without new signal.
+*Why these two:* the brief already demands an answer to long-running runs, so doing it properly is cheap relative to its value; cost accounting compounds the required analytics baseline (they share one data model and one instrumentation effort). Together they cover both sides of the role i.e API/product design and observability.
+*Why not the rest:* webhooks are the push counterpart of long-running runs (redundant with our pull design); rate limiting and audit trail presuppose multi-tenancy (a named non-goal) and demo poorly single-user; batch API is a loop over creation unless real batch semantics are built - scope without new signal.
 
 **Code standards (non-negotiable, from the brief):**
 
