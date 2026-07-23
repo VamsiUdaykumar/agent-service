@@ -80,7 +80,7 @@ The design's north star is defensibility: every included feature has a stated re
 
 ### 3.5 Explicitly excluded / deferred
 
-Webhooks, rate limiting, audit trail, batch API (rationale in §2). Deferred extensions, named with one-line costs so deferral reads as judgment: ETag/If-None-Match, generated SDK snippet, sampling strategy, alerting, endpoint deprecation, `/runs/{id}/replay` convenience endpoint (build only if time allows).
+Webhooks, rate limiting, audit trail, batch API. Deferred extensions, named with one-line costs so deferral reads as judgment: ETag/If-None-Match, generated SDK snippet, sampling strategy, alerting, endpoint deprecation, `/runs/{id}/replay` convenience endpoint (build only if time allows).
 
 ---
 
